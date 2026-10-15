@@ -7,8 +7,8 @@
 #     (uso de 5h/semanal capturado pelo tap de statusline) em /usage;
 #   - do Codex, SOMENTE <pasta>/sessions, <pasta>/archived_sessions e <pasta>/thread-writer-locks em
 #     /codex/<conta>/... (nunca auth.json, config.toml, history.jsonl, logs nem os bancos SQLite);
-#   - do Cursor, SOMENTE ~/.habblaud/cursor/sessions em /cursor/sessions (as conversas gravadas pelo wrapper) e, se
-#     existir, ~/.habblaud/team.json em /team/team.json;
+#   - do Cursor, SOMENTE ~/.habblaud/cursor/sessions em /cursor/sessions (wrapper), ~/.cursor/chats e ~/.cursor/projects
+#     em /home/node/.cursor/… (IDE / cursor-agent e subagentes), e, se existir, ~/.habblaud/team.json em /team/team.json;
 #   - HABBLAUD_CLAUDE_DIRS, HABBLAUD_CODEX_DIRS, HABBLAUD_ACCOUNTS, HABBLAUD_USAGE_DIR, HABBLAUD_CURSOR_DIR e
 #     HABBLAUD_TEAM_FILE.
 # O Compose mescla o override automaticamente em qualquer `docker compose ...` rodado nesta pasta.

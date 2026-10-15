@@ -61,6 +61,8 @@ const CURSOR_SESSIONS = join(process.env.HABBLAUD_CURSOR_DIR?.trim() ? resolve(p
 const TEAM_FILE = process.env.HABBLAUD_TEAM_FILE?.trim() ? resolve(process.env.HABBLAUD_TEAM_FILE.trim()) : join(STATE_DIR, 'team.json');
 /** Execuções do Cursor (wrapper mod/habblaud-cursor/run.mjs): SÓ <pasta>/sessions, somente leitura, em /cursor/sessions. */
 export const CONTAINER_CURSOR_DIR = '/cursor';
+/** IDE do Cursor no container (USER node): chats/ e projects/ do host, somente leitura. */
+export const CONTAINER_CURSOR_IDE = '/home/node/.cursor';
 /** Equipe (team.json), somente leitura, quando existe no host. */
 export const CONTAINER_TEAM_FILE = '/team/team.json';
 /** Onde o container lê o certificado do acesso remoto (server/http/remote.ts). */
@@ -322,7 +324,7 @@ export function renderOverride(
   codex: AccountMount[] = [],
   remoteTlsDir?: string,
   extraPorts: string[] = [],
-  extra: { cursorSessions?: string; teamFile?: string } = {},
+  extra: { cursorSessions?: string; cursorIde?: { chats: string; projects: string }; teamFile?: string } = {},
 ): string {
   const env: Array<[string, string]> = [
     ['HABBLAUD_CLAUDE_DIRS', mounts.map((m) => m.mountDir).join(',')],
@@ -351,6 +353,10 @@ export function renderOverride(
   if (remoteTlsDir) binds.push({ source: remoteTlsDir, target: CONTAINER_REMOTE_TLS_DIR });
   // Cursor: só as conversas das execuções (a pasta do wrapper não guarda mais nada); equipe: só o arquivo.
   if (extra.cursorSessions) binds.push({ source: extra.cursorSessions, target: `${CONTAINER_CURSOR_DIR}/sessions` });
+  if (extra.cursorIde) {
+    binds.push({ source: extra.cursorIde.chats, target: `${CONTAINER_CURSOR_IDE}/chats` });
+    binds.push({ source: extra.cursorIde.projects, target: `${CONTAINER_CURSOR_IDE}/projects` });
+  }
   if (extra.teamFile) binds.push({ source: extra.teamFile, target: CONTAINER_TEAM_FILE });
   if (binds.length) {
     lines.push('    volumes:');
@@ -528,6 +534,14 @@ function ensureCursorSessions(): string | undefined {
     warn(tr('não consegui criar {0} ({1}); o Cursor não vai aparecer no container.', [tildify(CURSOR_SESSIONS), (err as Error).message]));
     return undefined;
   }
+}
+
+/** Chats e transcripts do Cursor IDE no host (~/.cursor/chats e projects), para o escritório automático no container. */
+function ensureCursorIde(home: string): { chats: string; projects: string } | undefined {
+  const chats = realDir(join(home, '.cursor', 'chats'));
+  const projects = realDir(join(home, '.cursor', 'projects'));
+  if (!chats || !projects) return undefined;
+  return { chats, projects };
 }
 
 function ensureUsageDir(): string | undefined {
@@ -745,9 +759,15 @@ async function up(opts: Options, port: number): Promise<void> {
   const tmp = `${OVERRIDE_FILE}.tmp`;
   const cursorSessions = cursorDisabled(process.env) ? undefined : ensureCursorSessions();
   if (cursorSessions) say(tr('Cursor: monta {0} em {1}/sessions, somente leitura.', [tildify(cursorSessions), CONTAINER_CURSOR_DIR]));
+  const cursorIde = cursorDisabled(process.env) ? undefined : ensureCursorIde(HOME);
+  if (cursorIde) {
+    say(tr('Cursor IDE: monta chats e projects ({0}, {1}) em {2}, somente leitura.', [tildify(cursorIde.chats), tildify(cursorIde.projects), CONTAINER_CURSOR_IDE]));
+  } else if (!cursorDisabled(process.env)) {
+    warn(tr('Cursor IDE: {0} ou {1} não encontrados; no container só entram execuções do wrapper.', [tildify(join(HOME, '.cursor', 'chats')), tildify(join(HOME, '.cursor', 'projects'))]));
+  }
   const teamFile = existsSync(TEAM_FILE) ? TEAM_FILE : undefined;
   if (teamFile) say(tr('Equipe: monta {0}, somente leitura.', [tildify(teamFile)]));
-  writeFileSync(tmp, renderOverride(mounts, new Date(), usageDir, hostTimeZone(), codexMounts, remoteTlsDir, remotePorts, { cursorSessions, teamFile }), { mode: 0o600 });
+  writeFileSync(tmp, renderOverride(mounts, new Date(), usageDir, hostTimeZone(), codexMounts, remoteTlsDir, remotePorts, { cursorSessions, cursorIde, teamFile }), { mode: 0o600 });
   chmodSync(tmp, 0o600);
   renameSync(tmp, OVERRIDE_FILE);
   say(tr('docker-compose.override.yml gerado.'));
