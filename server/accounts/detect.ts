@@ -221,8 +221,8 @@ const ALIAS_TOOLS: Record<Provider, { invokes: RegExp; dir: RegExp }> = {
   },
   // O Cursor CLI não tem pasta por conta: o alias só serviria para a letra (hoje não usado).
   cursor: {
-    invokes: /(?:^|[\s;&|(])(?:[\w.~/-]*\/)?cursor-agent(?=$|[\s;&|)])/,
-    dir: /\bCURSOR_CONFIG_DIR=(?:"([^"]*)"|'([^']*)'|([^\s;&|]+))/,
+    invokes: /(?:^|[\s;&|(])(?:[\w.~/-]*\/)?(?:cursor-agent|agent)(?=$|[\s;&|)])/,
+    dir: /\bHABBLAUD_CURSOR_CHATS_DIR=(?:"([^"]*)"|'([^']*)'|([^\s;&|]+))/,
   },
 };
 

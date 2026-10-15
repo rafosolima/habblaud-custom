@@ -67,6 +67,51 @@ class CursorTerminalParser implements TerminalParser {
     this.lastAt = at;
     const id = (k: string) => `cursor:${k}`;
     const out: TerminalEntry[] = [];
+    const role = str(o.role);
+    if (role === 'user' && !str(o.type)) {
+      const text = textOf(o);
+      if (text) out.push({ kind: 'user', id: id(`user:${++this.seq}`), at, text: marked(prepare(text, TEXT_MAX)) });
+      return out.filter((e) => {
+        if (this.seen.has(e.id)) return false;
+        this.seen.add(e.id);
+        return true;
+      });
+    }
+    if (role === 'assistant' && !str(o.type)) {
+      const content = rec(o.message)?.content;
+      if (Array.isArray(content)) {
+        for (const item of content) {
+          const c = rec(item);
+          if (!c) continue;
+          if (c.type === 'text') {
+            const text = str(c.text);
+            if (text?.trim()) out.push({ kind: 'assistant', id: id(`say:${++this.seq}`), at, text: marked(prepare(text, TEXT_MAX)) });
+          } else if (c.type === 'tool_use') {
+            const name = str(c.name) ?? 'ferramenta';
+            const input = rec(c.input) ?? {};
+            const callId = str(c.id) ?? `call${++this.seq}`;
+            if (!this.seen.has(`tool:${callId}`)) {
+              this.seen.add(`tool:${callId}`);
+              const view = toolView(name, viewInput(name, input));
+              const entry: Extract<TerminalEntry, { kind: 'tool' }> = { kind: 'tool', id: id(`tool:${callId}`), at, tool: name, title: view.title };
+              if (view.input) entry.input = prepare(view.input, INPUT_MAX).text;
+              if (view.inputKind) entry.inputKind = view.inputKind;
+              out.push(entry);
+            }
+          }
+        }
+      }
+      return out.filter((e) => {
+        if (this.seen.has(e.id) && e.kind !== 'tool') return false;
+        this.seen.add(e.id);
+        return true;
+      });
+    }
+    if (o.type === 'turn_ended') {
+      const ok = str(o.status) === 'success';
+      out.push({ kind: 'system', id: id(`turn:${++this.seq}`), at, text: ok ? tr('Concluído') : tr('O Cursor terminou com erro'), level: ok ? 'info' : 'error' });
+      return out;
+    }
     switch (o.type) {
       case 'habblaud_meta': {
         const who = [str(o.name), str(o.role) ? `(${str(o.role)})` : ''].filter(Boolean).join(' ');

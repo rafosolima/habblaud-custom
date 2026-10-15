@@ -359,8 +359,14 @@ do Codex levam `provider: 'codex'` (ausente = Claude Code). Ids: `<conta>:<threa
 
 ## Cursor
 
-`sources/cursor/` (`CursorSource`, `provider: 'cursor'`): o Cursor CLI não grava um registro de sessões que dê para
-observar, então quem aparece são as execuções feitas pelo wrapper `mod/habblaud-cursor/run.mjs` (`npm run
+`sources/cursor/` (`CursorSource`, `provider: 'cursor'`):
+
+**Chats do IDE / `cursor-agent` (`files.ts`):** detecção automática de `~/.cursor/chats/` (ou `HABBLAUD_CURSOR_CHATS_DIRS`).
+Cada conversa com `meta.json` recente (30 min), `cwd` e sem `isSubagent` entra como agente principal `cursor:<chatId>`,
+com título e status idle/working (5 min). Sem terminal (SQLite em `store.db` ainda não é lido).
+
+**Wrapper (`habblaud-cursor`):** o Cursor CLI não grava um registro de sessões que dê para observar sozinho, então as
+execuções feitas pelo wrapper `mod/habblaud-cursor/run.mjs` (`npm run
 cursor:install` instala `~/.habblaud/bin/habblaud-cursor`). O wrapper roda `cursor-agent -p --output-format stream-json
 --stream-partial-output <resto>` e grava `<dir>/sessions/<AAAAMMDDTHHMMSS>-<hex>.jsonl` (pasta 700, arquivo 600):
 

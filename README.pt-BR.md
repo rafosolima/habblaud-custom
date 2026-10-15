@@ -608,7 +608,14 @@ chip da conta do Codex é vazado e leva o selo **CODEX**.
 
 ### Cursor
 
-O Cursor CLI (`cursor-agent`) entra no escritório pelo wrapper do Habblaud: é o jeito de um agente do Claude Code (um
+**Automático (IDE e `cursor-agent`):** se existir `~/.cursor/chats/`, o Habblaud acha a conversa e acompanha o transcript
+ao vivo em `~/.cursor/projects/<projeto>/agent-transcripts/<chatId>.jsonl` — como no Claude Code: atividades (Read,
+Grep, Shell…), título do pedido, status ocioso/trabalhando e **terminal** de leitura. **Subagentes** do Cursor (Task em
+`agent-transcripts/<pai>/subagents/*.jsonl`) entram ligados ao chat principal, com crachá **Subagente (Cursor)**. Chats
+sem `cwd` ficam de fora; `HABBLAUD_CURSOR=0` desliga; `HABBLAUD_CURSOR_CHATS_DIRS` aponta outra raiz com `chats/`.
+Mensagens pelo escritório continuam só para Claude Code/Codex.
+
+O Cursor CLI (`cursor-agent`) também entra pelo wrapper do Habblaud: é o jeito de um agente do Claude Code (um
 "Tech Lead") chamar "desenvolvedores" do Cursor e você ver cada um trabalhando, com nome e papel.
 
 1. Instale o Cursor CLI e faça o login (`cursor-agent login`).

@@ -12,6 +12,11 @@ do meio (0.**3**.0).
 
 ### Cursor CLI no escritório e nomes da equipe
 
+- **Cursor IDE e `cursor-agent` no escritório:** o Habblaud acha sozinho `~/.cursor/chats` e lê o transcript ao vivo em
+  `~/.cursor/projects/<projeto>/agent-transcripts/<chatId>.jsonl` (como no Claude Code: atividades, título, tokens
+  parciais, terminal de leitura e **subagentes** (Task/subagent em `agent-transcripts/<pai>/subagents/*.jsonl`,
+  ligados ao principal Cursor no escritório; mensagens pelo escritório continuam só para Claude/Codex). O wrapper
+  `habblaud-cursor` continua valendo para devs chamados pelo Claude Code, com atividade ao vivo e terminal.
 - **Cursor CLI (`cursor-agent`):** um agente do Claude Code (o Tech Lead) chama "desenvolvedores" do Cursor pelo novo
   wrapper `habblaud-cursor` (`npm run cursor:install`, que instala `~/.habblaud/bin/habblaud-cursor`): cada execução
   aparece no escritório como um personagem com o selo **CURSOR** e chip próprio, atividade ao vivo (leitura, edição,

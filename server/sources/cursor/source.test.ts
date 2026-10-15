@@ -1,4 +1,6 @@
 // Integração da fonte do Cursor: uma pasta temporária do wrapper (execuções sintéticas), o AccountsService e o Office.
+import { mkdirSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { AgentInfo, Notice } from '../../../shared/types';
 import { AccountsService } from '../../accounts/service';
@@ -20,7 +22,7 @@ afterEach(() => {
   cleanups = [];
 });
 
-function setup(opts: { alive?: Set<number>; inDocker?: boolean; team?: TeamMember[] } = {}) {
+function setup(opts: { alive?: Set<number>; inDocker?: boolean; team?: TeamMember[]; chatRoots?: string[]; home?: string } = {}) {
   const dir = cursorDir();
   cleanups.push(dir.cleanup);
   let clock = Date.now();
@@ -45,7 +47,17 @@ function setup(opts: { alive?: Set<number>; inDocker?: boolean; team?: TeamMembe
   });
   late.office = office;
   const alive = opts.alive ?? new Set([4242]);
-  const source = new CursorSource({ accounts, office, dir: dir.dir, now, watch: false, inDocker: opts.inDocker, isAlive: (pid) => alive.has(pid) });
+  const source = new CursorSource({
+    accounts,
+    office,
+    dir: dir.dir,
+    chatRoots: opts.chatRoots,
+    home: opts.home,
+    now,
+    watch: false,
+    inDocker: opts.inDocker,
+    isAlive: (pid) => alive.has(pid),
+  });
   cleanups.unshift(() => source.stop());
   const notices: Notice[] = [];
   return {
@@ -234,5 +246,84 @@ describe('fonte do Cursor: execuções do wrapper no escritório', () => {
     ctx.poll();
     expect(ctx.source.sources()).toEqual([]);
     expect(ctx.source.accountEntry()).toBeUndefined();
+  });
+});
+
+describe('fonte do Cursor: chats do IDE / cursor-agent', () => {
+  it('transcript jsonl: entra na sala certa, com título, atividade e terminal', () => {
+    const tmp = cursorDir();
+    cleanups.push(tmp.cleanup);
+    const home = join(tmp.dir, 'home');
+    const chatRoot = join(home, '.cursor');
+    const chatId = 'aead4f1f-test';
+    const cwd = '/home/x/habblaud';
+    const chatDir = join(chatRoot, 'chats', 'proj', chatId);
+    mkdirSync(chatDir, { recursive: true });
+    const t = Date.now();
+    writeFileSync(
+      join(chatDir, 'meta.json'),
+      JSON.stringify({ updatedAtMs: t, cwd, title: 'Habblaud Cursor Agent', hasConversation: true }),
+    );
+    const slug = 'home-x-habblaud';
+    const transcript = join(chatRoot, 'projects', slug, 'agent-transcripts', chatId, `${chatId}.jsonl`);
+    mkdirSync(join(transcript, '..'), { recursive: true });
+    writeFileSync(
+      transcript,
+      [
+        JSON.stringify({ role: 'user', message: { content: [{ type: 'text', text: '<user_query>\nImplemente X\n</user_query>' }] } }),
+        JSON.stringify({
+          role: 'assistant',
+          message: { content: [{ type: 'tool_use', name: 'Read', input: { path: '/home/x/habblaud/README.md' } }] },
+        }),
+      ].join('\n'),
+    );
+    const ctx = setup({ chatRoots: [chatRoot], home });
+    ctx.source.boot();
+    ctx.poll();
+    const id = `cursor:${chatId}`;
+    expect(ctx.agent(id)).toMatchObject({
+      kind: 'main',
+      provider: 'cursor',
+      account: '.cursor',
+      roomId: cwd,
+      title: 'Implemente X',
+      status: 'working',
+    });
+    expect(ctx.source.transcriptPathOf(id)).toBe(transcript);
+    expect(new SourceSet([ctx.source]).parserFor(id).push(JSON.stringify({ role: 'user', message: { content: [{ type: 'text', text: 'oi' }] } }))).toEqual([
+      expect.objectContaining({ kind: 'user' }),
+    ]);
+  });
+
+  it('subagente no transcript do pai entra ligado ao principal Cursor', () => {
+    const tmp = cursorDir();
+    cleanups.push(tmp.cleanup);
+    const home = join(tmp.dir, 'home');
+    const chatRoot = join(home, '.cursor');
+    const parentId = 'parent-uuid';
+    const subId = 'sub-uuid';
+    const cwd = '/home/x/habblaud';
+    const slug = 'home-x-habblaud';
+    mkdirSync(join(chatRoot, 'chats', 'p', parentId), { recursive: true });
+    const t = Date.now();
+    writeFileSync(join(chatRoot, 'chats', 'p', parentId, 'meta.json'), JSON.stringify({ updatedAtMs: t, cwd, hasConversation: true }));
+    const mainPath = join(chatRoot, 'projects', slug, 'agent-transcripts', parentId, `${parentId}.jsonl`);
+    const subPath = join(chatRoot, 'projects', slug, 'agent-transcripts', parentId, 'subagents', `${subId}.jsonl`);
+    mkdirSync(join(subPath, '..'), { recursive: true });
+    writeFileSync(
+      mainPath,
+      JSON.stringify({ role: 'user', message: { content: [{ type: 'text', text: '<user_query>\nPai\n</user_query>' }] } }) + '\n',
+    );
+    writeFileSync(
+      subPath,
+      JSON.stringify({ role: 'user', message: { content: [{ type: 'text', text: '<user_query>\nExplorar repo\n</user_query>' }] } }) + '\n',
+    );
+    const ctx = setup({ chatRoots: [chatRoot], home });
+    ctx.source.boot();
+    ctx.poll();
+    const parent = ctx.agent(`cursor:${parentId}`);
+    expect(parent?.kind).toBe('main');
+    const sub = ctx.office.commit().snapshot.agents.find((a) => a.id === `cursor:${subId}`);
+    expect(sub).toMatchObject({ kind: 'sub', parentId: `cursor:${parentId}`, provider: 'cursor', title: 'Explorar repo' });
   });
 });

@@ -37,6 +37,7 @@ import { ClaudeWatcher } from './sources/watcher';
 import { discoverCodexDirs } from './sources/codex/accounts';
 import { CodexHistory } from './sources/codex/history';
 import { CodexSource } from './sources/codex/source';
+import { discoverCursorRoots } from './sources/cursor/files';
 import { CursorSource } from './sources/cursor/source';
 import { TeamRoster } from './model/team';
 import { createBuildReader, readBuildInfo } from './build';
@@ -142,8 +143,11 @@ const agents = new SourceSet([claude]);
 const codexDirs = config.codex ? discoverCodexDirs(process.env, config.home) : [];
 const codex = codexDirs.length ? new CodexSource({ accounts, office, dirs: codexDirs, env: process.env, home: config.home }) : undefined;
 if (codex) agents.add(codex);
-// Cursor CLI: as execuções feitas pelo wrapper do Habblaud (mod/habblaud-cursor/run.mjs; HABBLAUD_CURSOR=0 desliga).
-const cursor = config.cursor ? new CursorSource({ accounts, office, dir: config.cursorDir, inDocker: config.inDocker }) : undefined;
+// Cursor: chats em ~/.cursor/chats (IDE / cursor-agent) e execuções do wrapper (mod/habblaud-cursor/run.mjs; HABBLAUD_CURSOR=0 desliga).
+const cursorChatRoots = config.cursor ? discoverCursorRoots(process.env, config.home) : [];
+const cursor = config.cursor
+  ? new CursorSource({ accounts, office, dir: config.cursorDir, chatRoots: cursorChatRoots, home: config.home, inDocker: config.inDocker })
+  : undefined;
 if (cursor) agents.add(cursor);
 // Eventos dos hooks do Codex (POST /api/codex/events, mod/habblaud-codex/hook.mjs): vão para a fonte do Codex ao vivo
 // (CodexLive); sem ela (nenhuma pasta do Codex ou HABBLAUD_CODEX=0) a rota responde {ok: false}.
@@ -500,10 +504,11 @@ server.listen(config.port, config.host, () => {
   }
   if (cursor) {
     const open = cursor.sources().reduce((n, s) => n + s.sessions, 0);
+    const where = cursorChatRoots.length ? `${cursorChatRoots.join(', ')} · ${config.cursorDir}` : config.cursorDir;
     log.info(
       cursor.accountEntry()
-        ? tr('   Cursor: {0} execução(ões) aberta(s) · {1}', [open, config.cursorDir])
-        : tr('   Cursor: nenhuma execução ainda em {0} (npm run cursor:install).', [config.cursorDir]),
+        ? tr('   Cursor: {0} sessão(ões) aberta(s) · {1}', [open, where])
+        : tr('   Cursor: nenhuma sessão ainda ({0}; wrapper: npm run cursor:install).', [where]),
     );
   } else {
     log.info(tr('   Cursor: desligado (HABBLAUD_CURSOR=0).'));

@@ -22,7 +22,7 @@
 //
 // Node puro (22+), só `node:*`, sem dependências. O nome é obrigatório: é ele que vira o personagem ("Lucas (Dev -
 // Mestre)"); o mesmo nome rodando duas vezes ao mesmo tempo aparece como "Lucas 2 (Dev - Mestre)".
-import { spawn } from 'node:child_process';
+import { execFileSync, spawn } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
 import { chmodSync, closeSync, mkdirSync, openSync, readdirSync, statSync, unlinkSync, writeSync } from 'node:fs';
 import { homedir } from 'node:os';
@@ -76,6 +76,21 @@ export function parseArgs(argv) {
   }
   for (const k of ['name', 'role', 'dir']) if (typeof out[k] === 'string') out[k] = out[k].trim() || undefined;
   return out;
+}
+
+/** Executável do Cursor CLI: HABBLAUD_CURSOR_BIN, senão `cursor-agent` ou `agent` no PATH. */
+export function resolveCursorAgentBin(env = process.env) {
+  const explicit = env.HABBLAUD_CURSOR_BIN?.trim();
+  if (explicit) return explicit;
+  for (const name of ['cursor-agent', 'agent']) {
+    try {
+      const out = execFileSync('which', [name], { encoding: 'utf8', env: { PATH: env.PATH ?? '', ...env } }).trim();
+      if (out) return out;
+    } catch {
+      // tenta o próximo nome
+    }
+  }
+  return 'cursor-agent';
 }
 
 /** O ambiente do cursor-agent: o da sessão que chamou, menos o canal de mensagens dela (token e socket do Claude
@@ -253,7 +268,7 @@ export async function main(argv = process.argv.slice(2), env = process.env) {
       // disco cheio: o cursor-agent continua
     }
   };
-  const bin = env.HABBLAUD_CURSOR_BIN?.trim() || 'cursor-agent';
+  const bin = resolveCursorAgentBin(env);
   const cursorArgs = ['-p', '--output-format', 'stream-json', '--stream-partial-output', ...args.rest];
   let child;
   let spawnError;
