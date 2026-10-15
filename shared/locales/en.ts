@@ -3296,5 +3296,7 @@ export const EN: Readonly<Record<string, string>> = {
   "Uso: npm run cursor:install | npm run cursor:uninstall": "Usage: npm run cursor:install | npm run cursor:uninstall",
   "não consegui criar {0} ({1}); o Cursor não vai aparecer no container.": "couldn't create {0} ({1}); Cursor won't show up in the container.",
   "Cursor: monta {0} em {1}/sessions, somente leitura.": "Cursor: mounts {0} at {1}/sessions, read-only.",
+  "Cursor IDE: monta chats e projects ({0}, {1}) em {2}, somente leitura.": "Cursor IDE: mounts chats and projects ({0}, {1}) at {2}, read-only.",
+  "Cursor IDE: {0} ou {1} não encontrados; no container só entram execuções do wrapper.": "Cursor IDE: {0} or {1} not found; in the container only wrapper runs appear.",
   "Equipe: monta {0}, somente leitura.": "Team: mounts {0}, read-only.",
 };
