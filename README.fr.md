@@ -639,6 +639,30 @@ seulement : Codex n'indique pas le coût). La pastille du compte Codex est évid
   personnage peut donc mettre un peu de temps à partir après la fermeture du terminal.
 - Les conversations du cloud de ChatGPT (sans fichier sur l'ordinateur) n'apparaissent pas. `HABBLAUD_CODEX=0` désactive Codex.
 
+### Cursor
+
+Le Cursor CLI (`cursor-agent`) entre dans le bureau par le wrapper de Habblaud : un agent Claude Code (un « Tech
+Lead ») appelle des « développeurs » Cursor et vous voyez chacun travailler, avec un nom et un rôle. Installez le
+Cursor CLI et connectez-vous, lancez `npm run cursor:install` (il installe `~/.habblaud/bin/habblaud-cursor`) et l'agent
+appelle :
+
+```sh
+~/.habblaud/bin/habblaud-cursor --name Lucas --role "Dev - Mestre" --dir ~/projets/boutique -- "Implémente l'endpoint X et lance les tests"
+```
+
+`--name` et `--role` sont obligatoires (le personnage apparaît comme **Lucas (Dev - Mestre)**). Le wrapper ne renvoie
+qu'un résumé ; le code de sortie est celui de Cursor. La dernière ligne est `chatId: <id>` : `-- --resume <id> "Corrige
+le test"` envoie la correction au même dev, avec le contexte, et il revient comme le **même** personnage. Appelé depuis
+une session Claude Code ouverte, il entre comme **sous-agent** de celle-ci ; sinon comme agent principal dans la salle
+du dossier. Badge **CURSOR** ; ni messages ni permissions depuis le bureau. `HABBLAUD_CURSOR=0` le désactive.
+
+### Noms de l'équipe
+
+Facultatif : `~/.habblaud/team.json` (ou `HABBLAUD_TEAM_FILE`) donne un nom et un rôle fixes par type de sous-agent
+Claude Code (`agentType`), par le `--name` de Cursor (`cursorName`) ou aux sessions principales (`main: true`, `cwd`
+facultatif). Le personnage apparaît comme **Nom (Rôle)** ; la même personne deux fois, **Tati 2 (Product Owner)**. Sans
+le fichier rien ne change ; les noms et rôles ne vont jamais à Habblaud World.
+
 ### GitHub dans le bureau
 
 Ce que les agents font sur GitHub anime la salle du projet, sans token et sans accès à Internet : Habblaud lit dans les

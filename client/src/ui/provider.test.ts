@@ -88,3 +88,18 @@ describe('ferramenta (Claude Code ou Codex)', () => {
     expect(codexApprovalLabel(undefined)).toBe('—');
   });
 });
+
+describe('Cursor', () => {
+  it('nome, selo, letra, rótulo do chip e id com cara de Cursor', async () => {
+    const p = await import('./provider');
+    expect(p.PROVIDER_NAME.cursor).toBe('Cursor');
+    expect(p.isCursor({ provider: 'cursor' })).toBe(true);
+    expect(p.looksLikeCursorId('.cursor')).toBe(true);
+    expect(p.accountProvider(undefined, 'demo:.cursor')).toBe('cursor');
+    expect(p.fallbackShort('.cursor', 'cursor')).toBe('R');
+    expect(p.showsProviderTag('cursor', 'Cursor')).toBe(false);
+    expect(p.showsProviderTag('cursor', 'Conta R')).toBe(true);
+    expect(p.showsProviderTag('claude', 'Conta C')).toBe(false);
+    expect(p.accountChipLabel({ name: 'Conta R', provider: 'cursor' }, '.cursor', 'cursor')).toBe('Conta R · Cursor');
+  });
+});

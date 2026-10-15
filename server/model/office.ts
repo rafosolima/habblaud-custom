@@ -28,8 +28,10 @@ import { nameKey, type AppearanceParts } from '../../shared/appearance';
 import { DemoSimulator } from '../../shared/demo/simulator';
 import { describeGitHubEvent, githubEventKey, RoomEffects, type GitHubEvent } from '../../shared/github';
 import { hash32 } from '../../shared/hash';
+import { NAME_POOL, pickName } from '../../shared/names';
 import { applyPermission } from '../permissions/registry';
 import type { NameStore, StoredCharacter } from './names';
+import type { TeamLookup, TeamMember } from './team';
 import { normalizeCwd, roomDisplayNames, SlotAllocator } from './rooms';
 import { tr } from '../../shared/i18n';
 import type { WorldMeta } from '../../shared/world/api';
@@ -80,7 +82,21 @@ export interface OfficeDeps {
   ptys?: () => { status: PtyStatus; list: PtyInfo[] };
   /** Habblaud World (WorldService.meta; ver OfficeSnapshot.meta.world). */
   world?: () => WorldMeta;
+  /** Equipe (model/team.ts): nome e papel fixos por tipo de subagente, nome do Cursor ou sessão principal. */
+  team?: TeamLookup;
   now?: () => number;
+}
+
+/**
+ * Quem é o agente, quando a fonte sabe (ex.: o `--name`/`--role` do wrapper do Cursor) ou a equipe diz: o personagem
+ * aparece como "Nome (Papel)", com a aparência fixa pelo nome. `agentType` (subagente do Claude Code) e `cursorName`
+ * são procurados na equipe (team.json), que vence o `name`/`role` passados.
+ */
+export interface IdentityHint {
+  agentType?: string;
+  cursorName?: string;
+  name?: string;
+  role?: string;
 }
 
 /** O que o transcript sabe sobre o agente (aplicado de uma vez). */
@@ -98,7 +114,7 @@ export interface TranscriptSummary {
 
 export interface MainInput {
   id: string;
-  /** Ferramenta do agente (AgentInfo.provider); ausente = 'claude'. Os subagentes herdam a do principal. */
+  /** Ferramenta do agente (AgentInfo.provider); ausente = 'claude'. Os subagentes herdam a do principal (salvo SubInput.provider). */
   provider?: Provider;
   account: string;
   sessionId: string;
@@ -107,6 +123,8 @@ export interface MainInput {
   startedAt: number;
   status: AgentStatus;
   waitingFor?: string;
+  /** Nome e papel fixos (ver IdentityHint). */
+  identity?: IdentityHint;
 }
 
 export interface SubInput {
@@ -117,6 +135,12 @@ export interface SubInput {
   title?: string;
   background: boolean;
   startedAt: number;
+  /** Ferramenta do subagente quando é outra que a do pai (ex.: um Cursor chamado por uma sessão do Claude Code). */
+  provider?: Provider;
+  /** Conta do subagente quando não é a do pai (a da ferramenta dele). */
+  account?: string;
+  /** Nome e papel fixos (ver IdentityHint). */
+  identity?: IdentityHint;
 }
 
 interface AgentRecord {
@@ -324,17 +348,23 @@ export class Office {
     }
     const roomId = normalizeCwd(p.cwd);
     this.ensureRoom(roomId, now);
-    const chosen = this.roomCharacter(roomId, p.id, p.sessionId);
+    // Nome e papel dados pela fonte (ex.: --name do Cursor) não pegam o personagem do projeto; o personagem do projeto
+    // vence a regra `main` da equipe.
+    const given = this.teamMember(p.identity);
+    const chosen = given ? undefined : this.roomCharacter(roomId, p.id, p.sessionId);
+    const member = given ?? (!chosen && (p.provider ?? 'claude') === 'claude' ? this.deps.team?.main(p.cwd) : undefined);
+    // A mesma sessão do Claude Code reaberta noutro processo mantém o nome; cada execução do Cursor é uma pessoa à parte.
+    const team = member ? this.teamPerson(member, p.id, (p.provider ?? 'claude') === 'claude' ? p.sessionId : undefined) : undefined;
     // A mesma sessão retomada noutro processo (ex.: "Assumir aqui") mantém o nome, mesmo com o processo antigo
     // ainda saindo do escritório.
-    const person = chosen ?? this.deps.names.assign(p.sessionId, this.takenNames(undefined, p.sessionId));
+    const person = chosen ?? team ?? this.deps.names.assign(p.sessionId, this.takenNames(undefined, p.sessionId));
     const info: AgentInfo = {
       id: p.id,
       kind: 'main',
       roomId,
       name: person.name,
       look: person.look,
-      role: p.role,
+      role: team?.role ?? p.role,
       sessionId: p.sessionId,
       account: p.account,
       status: p.status,
@@ -344,7 +374,7 @@ export class Office {
       lastEventAt: p.startedAt,
       statusSince: now,
       stats: zeroStats(),
-      seed: chosen?.seed ?? hash32(p.id),
+      seed: chosen?.seed ?? team?.seed ?? hash32(p.id),
     };
     if (p.provider && p.provider !== 'claude') info.provider = p.provider;
     if (chosen) {
@@ -589,7 +619,9 @@ export class Office {
       this.reactivateSub(p.id);
       return true;
     }
-    const person = this.deps.names.assign(p.id, this.takenNames());
+    const member = this.teamMember(p.identity);
+    const team = member ? this.teamPerson(member, p.id) : undefined;
+    const person = team ?? this.deps.names.assign(p.id, this.takenNames());
     const info: AgentInfo = {
       id: p.id,
       kind: 'sub',
@@ -597,9 +629,9 @@ export class Office {
       roomId: parent.info.roomId,
       name: person.name,
       look: person.look,
-      role: p.role,
+      role: team?.role ?? p.role,
       sessionId: p.sessionId,
-      account: parent.info.account,
+      account: p.account ?? parent.info.account,
       status: 'working',
       recent: [],
       tasks: [],
@@ -607,9 +639,10 @@ export class Office {
       lastEventAt: p.startedAt,
       statusSince: now,
       stats: zeroStats(),
-      seed: hash32(p.id),
+      seed: team?.seed ?? hash32(p.id),
     };
-    if (parent.info.provider) info.provider = parent.info.provider;
+    const provider = p.provider ?? parent.info.provider;
+    if (provider && provider !== 'claude') info.provider = provider;
     if (p.title) info.title = p.title;
     if (p.background) info.background = true;
     this.agents.set(p.id, { info, history: [], turnStart: now });
@@ -867,6 +900,30 @@ export class Office {
   private editable(id: string): AgentRecord | undefined {
     const rec = this.agents.get(id);
     return rec && rec.info.kind === 'main' && rec.removeAt === undefined ? rec : undefined;
+  }
+
+  /** Membro da equipe para a dica (team.json pelo tipo do subagente ou pelo nome do Cursor; senão o nome dado). */
+  private teamMember(hint: IdentityHint | undefined): TeamMember | undefined {
+    if (!hint) return undefined;
+    const team = this.deps.team;
+    const found = (hint.agentType && team?.subagent(hint.agentType)) || (hint.cursorName && team?.cursor(hint.cursorName)) || undefined;
+    if (found) return found;
+    return hint.name?.trim() ? { name: hint.name.trim(), ...(hint.role?.trim() ? { role: hint.role.trim() } : {}) } : undefined;
+  }
+
+  /**
+   * Personagem de um membro da equipe: "Nome (Papel)", com a aparência fixa pelo nome (semente do nome; o visual do
+   * nome no sorteio, se ele estiver lá). Nome já em uso (a mesma pessoa rodando duas vezes, ou o personagem de um
+   * projeto): "Nome 2 (Papel)", "Nome 3 (Papel)"...
+   */
+  private teamPerson(m: TeamMember, id: string, exceptSession?: string): { name: string; look: 'f' | 'm'; seed: number; role?: string } {
+    const taken = this.takenNames(id, exceptSession);
+    const label = (n: string) => (m.role ? `${n} (${m.role})` : n);
+    let name = label(m.name);
+    for (let k = 2; taken.has(name); k++) name = label(`${m.name} ${k}`);
+    const key = nameKey(m.name);
+    const look = NAME_POOL.find((p) => nameKey(p.name) === key)?.look ?? pickName(key, new Set()).look;
+    return { name, look, seed: hash32(`team:${key}`), ...(m.role ? { role: m.role } : {}) };
   }
 
   /**

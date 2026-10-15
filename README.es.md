@@ -640,6 +640,29 @@ chip de la cuenta de Codex es hueco y lleva el sello **CODEX**.
 - Las conversaciones en la nube de ChatGPT (sin archivo en la computadora) no aparecen. `HABBLAUD_CODEX=0` desactiva
   Codex.
 
+### Cursor
+
+El Cursor CLI (`cursor-agent`) entra en la oficina por el wrapper de Habblaud: un agente de Claude Code (un "Tech
+Lead") llama a "desarrolladores" de Cursor y ves a cada uno trabajando, con nombre y rol. Instala el Cursor CLI e
+inicia sesión, ejecuta `npm run cursor:install` (instala `~/.habblaud/bin/habblaud-cursor`) y el agente llama:
+
+```sh
+~/.habblaud/bin/habblaud-cursor --name Lucas --role "Dev - Mestre" --dir ~/proyectos/tienda -- "Implementa el endpoint X y corre los tests"
+```
+
+`--name` y `--role` son obligatorios (el personaje aparece como **Lucas (Dev - Mestre)**). El wrapper devuelve solo un
+resumen; el código de salida es el de Cursor. La última línea es `chatId: <id>`: `-- --resume <id> "Corrige el test"`
+manda la corrección al mismo dev, con el contexto, y vuelve como el **mismo** personaje. Llamado desde una sesión
+abierta de Claude Code, entra como **subagente** de ella; si no, como agente principal en la sala de la carpeta. Lleva
+el sello **CURSOR**; sin mensajes ni permisos desde la oficina. `HABBLAUD_CURSOR=0` lo desactiva.
+
+### Nombres del equipo
+
+Opcional: `~/.habblaud/team.json` (o `HABBLAUD_TEAM_FILE`) da nombre y rol fijos por tipo de subagente de Claude Code
+(`agentType`), por el `--name` de Cursor (`cursorName`) o a las sesiones principales (`main: true`, `cwd` opcional). El
+personaje aparece como **Nombre (Rol)**; la misma persona dos veces, **Tati 2 (Product Owner)**. Sin el archivo nada
+cambia; los nombres y roles nunca van a Habblaud World.
+
 ### GitHub en la oficina
 
 Lo que los agentes hacen en GitHub anima la sala del proyecto, sin token y sin acceder a internet: Habblaud lee en

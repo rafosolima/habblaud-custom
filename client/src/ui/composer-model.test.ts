@@ -129,3 +129,12 @@ describe('caixa de mensagem (peças puras)', () => {
     expect(pollDelay(60_000)).toBeGreaterThanOrEqual(pollDelay(20_000));
   });
 });
+
+describe('caixa de mensagem: Cursor', () => {
+  it('agentes do Cursor não recebem mensagens (a dica diz por quê)', async () => {
+    const { composerMode } = await import('./composer-model');
+    const { CURSOR_HINT } = await import('./provider');
+    const agent = { id: 'cursor:r1', kind: 'main', provider: 'cursor', status: 'working', canMessage: false } as unknown as AgentInfo;
+    expect(composerMode(agent, { enabled: true, local: true, replaying: false })).toEqual({ kind: 'off', text: CURSOR_HINT });
+  });
+});

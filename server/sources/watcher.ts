@@ -764,6 +764,8 @@ export class ClaudeWatcher implements AgentSource {
       sessionId: t.sessionId,
       role: subagentRole(meta, spawn?.subagentType),
       title,
+      // Tipo do subagente: a equipe (team.json) pode dar nome e papel fixos a ele.
+      ...(meta?.agentType ?? spawn?.subagentType ? { identity: { agentType: meta?.agentType ?? spawn?.subagentType } } : {}),
       background,
       startedAt: state.firstAt ?? now,
     });

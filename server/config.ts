@@ -52,6 +52,12 @@ export interface ServerConfig {
   updateCheck: boolean;
   /** Observa as sessões do Codex (sources/codex/); HABBLAUD_CODEX=0 desliga. */
   codex: boolean;
+  /** Observa as execuções do Cursor CLI feitas pelo wrapper do Habblaud (sources/cursor/); HABBLAUD_CURSOR=0 desliga. */
+  cursor: boolean;
+  /** Pasta do wrapper do Cursor (HABBLAUD_CURSOR_DIR; padrão ~/.habblaud/cursor, no Docker /cursor). */
+  cursorDir: string;
+  /** Equipe (nomes e papéis fixos): HABBLAUD_TEAM_FILE ou <dataDir>/team.json (model/team.ts). */
+  teamFile: string;
   /** Segunda porta, com login, para o celular na rede local (http/remote.ts); ausente = desligada. */
   remote?: RemoteConfig;
   /** Por que o acesso remoto ficou desligado quando as variáveis estão incompletas. */
@@ -238,6 +244,9 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env, argv: string[] 
     repo: pkg.repo,
     updateCheck: !env.HABBLAUD_UPDATE_CHECK?.trim() || isTruthy(env.HABBLAUD_UPDATE_CHECK),
     codex: !env.HABBLAUD_CODEX?.trim() || isTruthy(env.HABBLAUD_CODEX),
+    cursor: !env.HABBLAUD_CURSOR?.trim() || isTruthy(env.HABBLAUD_CURSOR),
+    cursorDir: resolve(env.HABBLAUD_CURSOR_DIR?.trim() || (inDocker ? '/cursor' : join(home, '.habblaud', 'cursor'))),
+    teamFile: resolve(env.HABBLAUD_TEAM_FILE?.trim() || join(resolve(env.HABBLAUD_DATA_DIR?.trim() || (inDocker ? '/data' : join(home, '.habblaud'))), 'team.json')),
     remote: remote.config,
     remoteWarning: remote.warning,
     world: parseWorldConfig(env, argv),

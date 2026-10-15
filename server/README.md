@@ -18,6 +18,8 @@ npm run build && npm start   # produção: serve dist/client
 | Conta (e-mail, organização) e cache de uso | `~/.claude.json` (conta padrão) ou `<config>/.claude.json` — só esses campos |
 | Uso ao vivo (5h e semanal) | `~/.habblaud/usage/<conta>.json`, gravado pelo mod do Habblaud (`npm run mod:install`) ou pelo `scripts/statusline-tap.mjs` (`npm run usage:install`) |
 | Atalho da conta (`c`, `d`...) | linhas `alias x='... claude ...'` de `~/.zshrc`, `~/.bashrc`, `~/.zprofile`, `~/.bash_profile` |
+| Execuções do Cursor CLI (wrapper `habblaud-cursor`) | `<HABBLAUD_CURSOR_DIR>/sessions/<execução>.jsonl` (ver [Cursor](#cursor)) |
+| Equipe (nomes e papéis fixos) | `<HABBLAUD_TEAM_FILE>` ou `<dataDir>/team.json` (ver [Cursor](#cursor)) |
 
 **Forks** (subagentes que herdam o contexto do pai): o transcript começa com uma linha `fork-context-ref`, a
 cópia da chamada `Agent` do pai (mesmo `tool_use` id do `.meta.json`) e o resultado dela ("Fork started…") junto
@@ -355,6 +357,57 @@ do Codex levam `provider: 'codex'` (ausente = Claude Code). Ids: `<conta>:<threa
   `/ack` (mesma trava das mensagens). `canMessage` = há entregador (binário achado, ou auxiliar visto há até 10 s).
   Retorno 0 = entrou na fila da sessão (`delivered`); o Codex consome a fila a cada ~10 s, quando a sessão fica ociosa.
 
+## Cursor
+
+`sources/cursor/` (`CursorSource`, `provider: 'cursor'`): o Cursor CLI não grava um registro de sessões que dê para
+observar, então quem aparece são as execuções feitas pelo wrapper `mod/habblaud-cursor/run.mjs` (`npm run
+cursor:install` instala `~/.habblaud/bin/habblaud-cursor`). O wrapper roda `cursor-agent -p --output-format stream-json
+--stream-partial-output <resto>` e grava `<dir>/sessions/<AAAAMMDDTHHMMSS>-<hex>.jsonl` (pasta 700, arquivo 600):
+
+- 1ª linha `{"type":"habblaud_meta","v":1,pid,wrapperPid,parentSessionId,parentPid,name,role,cwd,startedAt,resume?}`
+  (`parentSessionId` = `CLAUDE_CODE_SESSION_ID`, `parentPid` = `CLAUDE_PID`, `resume` = o `--resume <chatId>` passado);
+- as linhas do stream-json como vieram, menos: pedaços seguidos de `assistant` e de `thinking` delta viram uma linha
+  (a linha repetida com o texto inteiro que o Cursor manda depois dos pedaços é descartada), sem `env` (o ambiente do
+  shell que o Cursor anexa ao fim de um shell) nem `beforeFullFileContent`/`afterFullFileContent`/`fileBytes`, e textos
+  com mais de 16.000 caracteres cortados;
+- última linha `{"type":"habblaud_end","exitCode",signal?,at}`.
+
+O wrapper apaga os arquivos com mais de 7 dias; para quem chamou imprime a resposta final e uma linha
+`[Cursor · Nome (Papel) · 42s · ferramentas: 3× read, 1× shell · sessão <id> · conversa: <arquivo>]` e, por último,
+`chatId: <session_id>` (com `--raw`, o stream vai para o stdout e o `chatId` para o stderr). Código de saída = o do
+`cursor-agent` (127 sem o binário); SIGINT/SIGTERM são repassados.
+
+A fonte (polling de 1 s + `fs.watch`) nunca escreve:
+
+- **Presença:** sem `habblaud_end` e, fora do Docker, o PID do `cursor-agent` (ou do wrapper) vivo; no Docker, escrita
+  há menos de 30 min. Arquivos encerrados, ou parados há mais de 24 h, ficam de fora no boot; ao vivo, uma execução
+  encerrada há menos de 60 s quando é vista pela primeira vez entra e sai.
+- **Entrada:** depois do `system/init` ou do `user` (ou 4 s só com o meta). Id do agente `cursor:<chatId>` (o
+  `session_id`, ou o `resume`): uma execução com `--resume` grava um arquivo novo e volta como o mesmo agente (no
+  período de graça, o mesmo personagem reaberto; subagente entregue, reativado). Outra execução da mesma conversa
+  rodando ao mesmo tempo fica com `cursor:<execução>`.
+- **Ligação:** principal do Claude Code aberto com `sessionId` = `parentSessionId` (senão o id terminando em
+  `:<parentPid>`): entra como subagente dele (`Office.addSub` com `provider: 'cursor'` e a conta `.cursor`; o
+  `SubInput.provider`/`account` deixam um subagente ter ferramenta e conta próprias); senão, principal na sala do `cwd`.
+- **Status:** trabalhando até o `result`; aí o principal fica ocioso ("Concluiu") e o subagente entrega; o fim (ou o
+  processo morto) fecha. Atividades: `tool_call` started (`describeCursorTool`: `shellToolCall` → Bash, `readToolCall`
+  → Read, `editToolCall` → Edit, `globToolCall` → Glob, `grepToolCall` → Grep, `lsToolCall` → LS, `updateTodosToolCall`
+  → TodoWrite, `mcpToolCall` → `mcp__<servidor>__<ferramenta>`, `webSearchToolCall` → WebSearch...; desconhecida =
+  genérica), resultado com erro/recusa, raciocínio, resposta, pedido. Tarefas do `updateTodos`/`createPlan`; tokens do
+  `result.usage`; linhas do `editToolCall` concluído.
+- **Conta:** uma, `.cursor` ("Cursor", letra e cor que não colidem), registrada quando a pasta existe; sem uso do plano
+  (fica fora do painel de uso). **Terminal:** `sources/cursor/terminal.ts`. Sem histórico do terminal, mensagens ou
+  permissões (`MessageRegistry` e `PermissionRegistry` só casam agentes do Claude Code/Codex).
+- **Nome:** o `--name`/`--role` (obrigatórios no wrapper) ou a equipe.
+
+**Equipe** (`model/team.ts`, `TeamRoster`): `HABBLAUD_TEAM_FILE` ou `<dataDir>/team.json`, só lido, conferido no máximo
+a cada 2 s pelo mtime. `{"members": [{name, role?, agentType?, cursorName?, main?, cwd?}]}` (nome até 24 caracteres,
+papel até 32). O `Office` pergunta à equipe (`OfficeDeps.team`): subagente pelo `agentType` (o do `.meta.json`, senão o
+`subagent_type` da chamada; `SubInput.identity`), Cursor pelo `cursorName`, principal do Claude Code pela regra `main`
+(depois do personagem do projeto). O nome vira `Nome (Papel)`, semente `hash32('team:' + nome)`; nome em uso (inclusive
+o personagem de outra sala) = `Nome 2 (Papel)`. Não vai para o `names.json`. Nunca sobe ao Habblaud World: a projeção
+(`shared/world/projection.ts`) sorteia o nome do mundo pelo id e não manda o papel.
+
 ## Habblaud World
 
 Em desenvolvimento e desligado por padrão (o que sai do computador: `docs/world/privacidade.md`; como mexer:
@@ -483,6 +536,10 @@ em `shared/world/city.ts` (fonte da verdade; o servidor do mundo guarda a cópia
 | `HABBLAUD_CODEX` | ligado | `0` desliga a fonte do Codex |
 | `HABBLAUD_CODEX_DIRS` | — | pastas do Codex separadas por vírgula; substitui a detecção (`CODEX_HOME` e `~/.codex*`) |
 | `HABBLAUD_CODEX_BIN` | `codex` do PATH | binário do Codex para o `codex queue` (modo Node e `npm run codex:bridge`) |
+| `HABBLAUD_CURSOR` | ligado | `0` desliga a fonte do Cursor |
+| `HABBLAUD_CURSOR_DIR` | `~/.habblaud/cursor` (Docker: `/cursor`) | pasta do wrapper do Cursor (as execuções ficam em `sessions/`); o wrapper usa a mesma variável |
+| `HABBLAUD_CURSOR_BIN` | `cursor-agent` do PATH | (wrapper) o executável do Cursor CLI |
+| `HABBLAUD_TEAM_FILE` | `<dataDir>/team.json` | equipe: nomes e papéis fixos (ver [Cursor](#cursor)) |
 | `HABBLAUD_MENSAGENS` | ligado (com o terminal) | `0`, `false`, `off` ou `no` desligam só as mensagens pelo escritório |
 | `HABBLAUD_CLAUDE_DIRS` | — | config dirs separados por vírgula; substitui a detecção (`~/.claude*` com `projects/` ou `sessions/` + `CLAUDE_CONFIG_DIR`) |
 | `HABBLAUD_DATA_DIR` | `~/.habblaud` (Docker: `/data`) | estado do Habblaud (nomes e personagens dos projetos persistidos em `names.json`, linha do tempo em `timeline/`, estatísticas do Meu dia em `stats/`, última verificação de versão em `updates.json`) |
