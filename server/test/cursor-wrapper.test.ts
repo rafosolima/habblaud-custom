@@ -11,6 +11,8 @@ import { setQuiet } from '../log';
 import { NameStore } from '../model/names';
 import { Office } from '../model/office';
 import { CursorSource } from '../sources/cursor/source';
+// @ts-expect-error: módulo .mjs sem tipos
+import { childEnv } from '../../mod/habblaud-cursor/run.mjs';
 
 setQuiet(true);
 
@@ -58,6 +60,12 @@ function lines(cursorDir: string): Array<Record<string, unknown>> {
 }
 
 describe('wrapper do Cursor (run.mjs)', () => {
+  it('não repassa ao cursor-agent o canal de mensagens da sessão do Claude Code', () => {
+    const env = { PATH: '/bin', CLAUDE_CODE_SESSION_ID: 's1', CLAUDE_CODE_MESSAGING_TOKEN: 'segredo', CLAUDE_CODE_MESSAGING_SOCKET: '/run/x.sock' };
+    expect(childEnv(env)).toEqual({ PATH: '/bin', CLAUDE_CODE_SESSION_ID: 's1' });
+    expect(env.CLAUDE_CODE_MESSAGING_TOKEN).toBe('segredo');
+  });
+
   it('grava meta, stream (juntando os pedaços, sem env) e fim; imprime o resumo; repassa as opções e a pasta', async () => {
     const work = temp();
     const r = await run(['--name', 'Lucas', '--role', 'Dev - Mestre', '--dir', work, '--', '--model', 'composer-2.5', 'Faça X'], {

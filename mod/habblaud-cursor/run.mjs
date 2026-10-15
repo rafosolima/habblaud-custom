@@ -78,6 +78,15 @@ export function parseArgs(argv) {
   return out;
 }
 
+/** O ambiente do cursor-agent: o da sessão que chamou, menos o canal de mensagens dela (token e socket do Claude
+ * Code), que os comandos do dev não têm por que ver. */
+export function childEnv(env) {
+  const out = { ...env };
+  delete out.CLAUDE_CODE_MESSAGING_TOKEN;
+  delete out.CLAUDE_CODE_MESSAGING_SOCKET;
+  return out;
+}
+
 export function sessionsDir(env = process.env) {
   const base = env.HABBLAUD_CURSOR_DIR?.trim() || join(env.HOME || homedir(), '.habblaud', 'cursor');
   return join(resolve(base), 'sessions');
@@ -249,7 +258,7 @@ export async function main(argv = process.argv.slice(2), env = process.env) {
   let child;
   let spawnError;
   try {
-    child = spawn(bin, cursorArgs, { cwd, env, stdio: ['inherit', 'pipe', 'inherit'] });
+    child = spawn(bin, cursorArgs, { cwd, env: childEnv(env), stdio: ['inherit', 'pipe', 'inherit'] });
   } catch (err) {
     spawnError = err;
   }
