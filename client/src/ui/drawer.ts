@@ -41,7 +41,7 @@ import {
 import { access } from '../net/access';
 import { PermissionCard } from './permission';
 import { canRenameRoom } from './roomrename';
-import { accountChipLabel, accountProvider, CODEX_LIVE_HINT, codexApprovalLabel, providerOf } from './provider';
+import { accountChipLabel, accountProvider, CODEX_LIVE_HINT, codexApprovalLabel, CURSOR_HINT, PROVIDER_NAME, providerOf } from './provider';
 import { ptyControllable } from './ptyapi';
 import { createAgentRow, updateAgentRow } from './rows';
 import { SocialSection } from './social';
@@ -207,6 +207,8 @@ class AgentView {
   private accEmail: HTMLElement;
   /** Dica dos hooks do Codex (ao vivo e aprovar pelo escritório), na gaveta de um agente do Codex. */
   private codexHint: HTMLElement;
+  /** Agente do Cursor: só se acompanha daqui (sem permissões nem mensagens). */
+  private cursorHint: HTMLElement;
   private roomBtn: HTMLButtonElement;
   private roomName: HTMLElement;
   private gone: HTMLElement;
@@ -402,6 +404,7 @@ class AgentView {
     ]);
     const statsSec = section(tr('Estatísticas'), this.stats.el);
     this.codexHint = h('p', { class: 'ui-codex-hint', hidden: true }, ...richText(CODEX_LIVE_HINT));
+    this.cursorHint = h('p', { class: 'ui-codex-hint', hidden: true, text: CURSOR_HINT });
 
     this.el = h(
       'div',
@@ -425,6 +428,7 @@ class AgentView {
       this.timelineSec.el,
       statsSec.el,
       this.codexHint,
+      this.cursorHint,
     );
   }
 
@@ -661,6 +665,7 @@ class AgentView {
 
     // Codex: como ter o ao vivo e as aprovações por aqui (o servidor ainda não diz se os hooks dele estão ligados).
     setHidden(this.codexHint, !codex || a.kind !== 'main' || !live || this.ctx.store.replaying);
+    setHidden(this.cursorHint, provider !== 'cursor' || !live || this.ctx.store.replaying);
   }
 
   /** Lista as perguntas pendentes com as opções, só para leitura (sem o pedido no escritório, a resposta é no Claude Code). */
@@ -720,7 +725,7 @@ class AgentView {
             ? tr('O agente já saiu do escritório.')
             : kind === 'ao vivo'
               ? tr('Ver a conversa desta sessão como no {0}, ao vivo{1} (T)', [
-                  provider === 'codex' ? 'Codex' : tr('terminal do Claude Code'),
+                  provider === 'claude' ? tr('terminal do Claude Code') : PROVIDER_NAME[provider],
                   this.pty.enabled && ptyControllable(this.last) ? tr('; "Assumir daqui" continua nela aqui') : '',
                 ])
               : kind === 'interativo'

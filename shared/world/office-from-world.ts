@@ -49,11 +49,12 @@ export function isWorldId(id: string): boolean {
 }
 
 /** Contas fictícias da visita, uma por ferramenta: só o nome da ferramenta, a letra e a cor (sem e-mail nem uso). */
-export const WORLD_TOOL_ACCOUNTS: Readonly<Record<Provider, { short: string; name: string; color: string }>> = {
+// Só as ferramentas que o mundo conhece (o protocolo do mundo só leva 'claude' e 'codex').
+export const WORLD_TOOL_ACCOUNTS: Readonly<Record<Exclude<Provider, 'cursor'>, { short: string; name: string; color: string }>> = {
   claude: { short: 'C', name: 'Claude Code', color: '#f08a3c' },
   codex: { short: 'X', name: 'Codex', color: '#a77bf3' },
 };
-const PROVIDERS: readonly Provider[] = ['claude', 'codex'];
+const PROVIDERS: readonly Exclude<Provider, 'cursor'>[] = ['claude', 'codex'];
 /** Status que existem no mundo; um que esta versão não conhece vira 'idle' (passeia, sem prometer nada). */
 const STATUSES: readonly AgentStatus[] = ['working', 'waiting', 'idle', 'shell'];
 

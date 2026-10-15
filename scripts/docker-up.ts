@@ -32,7 +32,7 @@
 // versões anteriores, o tap de statusline (npm run usage:install). Os dois gravam os números na pasta
 // montada em /usage. Sem eles, vale o cache do /usage lido das contas ao subir.
 import { spawnSync } from 'node:child_process';
-import { chmodSync, mkdirSync, readFileSync, realpathSync, renameSync, statSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, readFileSync, realpathSync, renameSync, statSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, join, posix, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -56,6 +56,13 @@ const ENV_FILE = join(ROOT, '.env');
 const USAGE_DIR = process.env.HABBLAUD_USAGE_DIR?.trim() ? resolve(process.env.HABBLAUD_USAGE_DIR.trim()) : join(STATE_DIR, 'usage');
 /** Onde essa pasta aparece no container. */
 const CONTAINER_USAGE_DIR = '/usage';
+/** Execuções do Cursor no host (HABBLAUD_CURSOR_DIR ou ~/.habblaud/cursor) e a equipe (HABBLAUD_TEAM_FILE ou ~/.habblaud/team.json). */
+const CURSOR_SESSIONS = join(process.env.HABBLAUD_CURSOR_DIR?.trim() ? resolve(process.env.HABBLAUD_CURSOR_DIR.trim()) : join(STATE_DIR, 'cursor'), 'sessions');
+const TEAM_FILE = process.env.HABBLAUD_TEAM_FILE?.trim() ? resolve(process.env.HABBLAUD_TEAM_FILE.trim()) : join(STATE_DIR, 'team.json');
+/** Execuções do Cursor (wrapper mod/habblaud-cursor/run.mjs): SÓ <pasta>/sessions, somente leitura, em /cursor/sessions. */
+export const CONTAINER_CURSOR_DIR = '/cursor';
+/** Equipe (team.json), somente leitura, quando existe no host. */
+export const CONTAINER_TEAM_FILE = '/team/team.json';
 /** Onde o container lê o certificado do acesso remoto (server/http/remote.ts). */
 const CONTAINER_REMOTE_TLS_DIR = '/remote-tls';
 const SERVICE = 'habblaud';
@@ -315,6 +322,7 @@ export function renderOverride(
   codex: AccountMount[] = [],
   remoteTlsDir?: string,
   extraPorts: string[] = [],
+  extra: { cursorSessions?: string; teamFile?: string } = {},
 ): string {
   const env: Array<[string, string]> = [
     ['HABBLAUD_CLAUDE_DIRS', mounts.map((m) => m.mountDir).join(',')],
@@ -323,6 +331,8 @@ export function renderOverride(
   if (codex.length) env.push(['HABBLAUD_CODEX_DIRS', codex.map((m) => m.mountDir).join(',')]);
   if (usageDir) env.push(['HABBLAUD_USAGE_DIR', CONTAINER_USAGE_DIR]);
   if (timeZone) env.push(['TZ', timeZone]);
+  if (extra.cursorSessions) env.push(['HABBLAUD_CURSOR_DIR', CONTAINER_CURSOR_DIR]);
+  if (extra.teamFile) env.push(['HABBLAUD_TEAM_FILE', CONTAINER_TEAM_FILE]);
   const lines = [
     `# Gerado por scripts/docker-up.ts em ${generatedAt.toISOString()} — não edite: é recriado a cada \`npm run docker:up\`.`,
     '# Contém caminhos do host e e-mails das contas: fica fora do git e com permissão 600.',
@@ -339,6 +349,9 @@ export function renderOverride(
   if (usageDir) binds.push({ source: usageDir, target: CONTAINER_USAGE_DIR });
   // Acesso remoto: SÓ a pasta do certificado do servidor (a chave da CA fica no host).
   if (remoteTlsDir) binds.push({ source: remoteTlsDir, target: CONTAINER_REMOTE_TLS_DIR });
+  // Cursor: só as conversas das execuções (a pasta do wrapper não guarda mais nada); equipe: só o arquivo.
+  if (extra.cursorSessions) binds.push({ source: extra.cursorSessions, target: `${CONTAINER_CURSOR_DIR}/sessions` });
+  if (extra.teamFile) binds.push({ source: extra.teamFile, target: CONTAINER_TEAM_FILE });
   if (binds.length) {
     lines.push('    volumes:');
     for (const b of binds) {
@@ -500,6 +513,23 @@ function migrateStateDir(): void {
 }
 
 /** Cria a pasta do uso do statusline se faltar e devolve o caminho real (ou undefined, se falhar). */
+/** HABBLAUD_CURSOR desligado (0, false, off, no). */
+export function cursorDisabled(env: NodeJS.ProcessEnv): boolean {
+  const v = env.HABBLAUD_CURSOR?.trim();
+  return !!v && /^(0|false|off|no)$/i.test(v);
+}
+
+/** Cria (700) a pasta das execuções do Cursor no host, para a montagem não nascer do root. */
+function ensureCursorSessions(): string | undefined {
+  try {
+    mkdirSync(CURSOR_SESSIONS, { recursive: true, mode: 0o700 });
+    return realDir(CURSOR_SESSIONS);
+  } catch (err) {
+    warn(tr('não consegui criar {0} ({1}); o Cursor não vai aparecer no container.', [tildify(CURSOR_SESSIONS), (err as Error).message]));
+    return undefined;
+  }
+}
+
 function ensureUsageDir(): string | undefined {
   try {
     mkdirSync(USAGE_DIR, { recursive: true, mode: 0o700 });
@@ -713,7 +743,11 @@ async function up(opts: Options, port: number): Promise<void> {
   const remoteTlsDir = prepareRemoteTls();
   const remotePorts = remoteTlsDir || remoteInsecure() ? remotePortsToPublish() : [];
   const tmp = `${OVERRIDE_FILE}.tmp`;
-  writeFileSync(tmp, renderOverride(mounts, new Date(), usageDir, hostTimeZone(), codexMounts, remoteTlsDir, remotePorts), { mode: 0o600 });
+  const cursorSessions = cursorDisabled(process.env) ? undefined : ensureCursorSessions();
+  if (cursorSessions) say(tr('Cursor: monta {0} em {1}/sessions, somente leitura.', [tildify(cursorSessions), CONTAINER_CURSOR_DIR]));
+  const teamFile = existsSync(TEAM_FILE) ? TEAM_FILE : undefined;
+  if (teamFile) say(tr('Equipe: monta {0}, somente leitura.', [tildify(teamFile)]));
+  writeFileSync(tmp, renderOverride(mounts, new Date(), usageDir, hostTimeZone(), codexMounts, remoteTlsDir, remotePorts, { cursorSessions, teamFile }), { mode: 0o600 });
   chmodSync(tmp, 0o600);
   renameSync(tmp, OVERRIDE_FILE);
   say(tr('docker-compose.override.yml gerado.'));

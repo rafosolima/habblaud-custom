@@ -606,6 +606,64 @@ chip da conta do Codex é vazado e leva o selo **CODEX**.
   pouco para ir embora depois que você fecha o terminal.
 - Conversas da nuvem do ChatGPT (sem arquivo no computador) não aparecem. `HABBLAUD_CODEX=0` desliga o Codex.
 
+### Cursor
+
+O Cursor CLI (`cursor-agent`) entra no escritório pelo wrapper do Habblaud: é o jeito de um agente do Claude Code (um
+"Tech Lead") chamar "desenvolvedores" do Cursor e você ver cada um trabalhando, com nome e papel.
+
+1. Instale o Cursor CLI e faça o login (`cursor-agent login`).
+2. `npm run cursor:install` copia o wrapper para `~/.habblaud/bin/habblaud-cursor` (rode de novo depois de atualizar o
+   Habblaud). `npm run cursor:uninstall` tira.
+3. O agente do Claude Code chama, pela ferramenta Bash:
+
+   ```sh
+   ~/.habblaud/bin/habblaud-cursor --name Lucas --role "Dev - Mestre" --dir ~/projetos/loja -- "Implemente o endpoint X e rode os testes"
+   ```
+
+   `--name` e `--role` são obrigatórios (o personagem aparece como **Lucas (Dev - Mestre)**); depois do `--` vai o
+   pedido e, se quiser, opções do `cursor-agent` (ex.: `--model`). O wrapper roda `cursor-agent -p --output-format
+   stream-json --stream-partial-output` na pasta e devolve só um resumo (a resposta final e uma linha com as
+   ferramentas usadas; `--raw` repassa o stream). O código de saída é o do Cursor. A última linha é
+   `chatId: <id>`: para mandar uma correção ao mesmo dev, com o contexto, use `-- --resume <id> "Corrija o teste"`.
+   A execução retomada grava um arquivo novo e volta como o **mesmo** personagem.
+
+- **Ligado a quem chamou:** o wrapper anota a sessão do Claude Code que o chamou (`CLAUDE_CODE_SESSION_ID`, ou o
+  `CLAUDE_PID`). Com essa sessão aberta no escritório, o dev do Cursor entra como **subagente** dela, na sala dela, e
+  entrega ao terminar; sem ela, entra como agente principal na sala da pasta.
+- **Selo CURSOR:** etiqueta com **CURSOR** e chip da conta **Cursor** (vazado, de cantos redondos). Atividade ao vivo,
+  tarefas (`updateTodos`), título, modelo, tokens, linhas alteradas e o **terminal** só de leitura com a conversa.
+- **O mesmo dev duas vezes ao mesmo tempo** aparece como **Lucas 2 (Dev - Mestre)**.
+- **Sem mensagens nem permissões pelo escritório:** quem conversa com o dev é o agente que o chamou (a gaveta avisa).
+- **Arquivos:** uma conversa por execução em `~/.habblaud/cursor/sessions/` (pasta 700, arquivos 600), com o pedido,
+  o raciocínio, as ferramentas e a resposta; sem o ambiente do shell (`env`) e sem o conteúdo inteiro dos arquivos
+  editados. O wrapper apaga as de mais de 7 dias. O Habblaud só lê.
+- `HABBLAUD_CURSOR=0` desliga; `HABBLAUD_CURSOR_DIR` muda a pasta; `HABBLAUD_CURSOR_BIN` troca o executável. No Docker,
+  o `npm run docker:up` monta só `~/.habblaud/cursor/sessions`, somente leitura (lá não dá para conferir se o processo
+  ainda roda: vale a escrita nos últimos 30 minutos).
+
+### Nomes da equipe
+
+Opcional: `~/.habblaud/team.json` (ou `HABBLAUD_TEAM_FILE`) dá nome e papel fixos a quem trabalha no escritório. O
+arquivo é só lido, e relido quando muda:
+
+```json
+{"members": [
+  {"agentType": "renato-techlead", "name": "Renato", "role": "TechLead", "main": true},
+  {"agentType": "tati-po", "name": "Tati", "role": "Product Owner"},
+  {"agentType": "julia-qa", "name": "Julia", "role": "qa - test"},
+  {"cursorName": "Lucas", "name": "Lucas", "role": "Dev - Mestre"}
+]}
+```
+
+- `agentType`: subagentes do Claude Code desse tipo (os agentes de `~/.claude/agents`, pelo nome do arquivo);
+- `cursorName`: execuções do Cursor com esse `--name` (o papel da equipe vale no lugar do `--role`);
+- `main: true`: as sessões principais do Claude Code (com `"cwd": "/pasta"`, só as de projetos dentro dela). O
+  personagem do projeto (**Editar o personagem**) continua valendo antes desta regra.
+
+O personagem aparece como **Nome (Papel)**, com a aparência fixa pelo nome. Nome já em uso (a mesma pessoa duas vezes)
+ganha um número: **Tati 2 (Product Owner)**. Sem o arquivo, nada muda. Nomes e papéis nunca vão ao Habblaud World. No
+Docker, o `npm run docker:up` monta o arquivo, se ele existir (depois de criá-lo, rode o `docker:up` de novo).
+
 ### GitHub no escritório
 
 O que os agentes fazem no GitHub anima a sala do projeto, sem token e sem acessar a internet: o Habblaud lê nos

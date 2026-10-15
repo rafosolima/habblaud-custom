@@ -572,9 +572,10 @@ export class PermissionRegistry {
     if (agentId) {
       const subId = `${sessionId}:${agentId}`;
       const sub = office.get(subId);
-      if (present(sub) && sub.provider !== 'codex') return { id: subId };
+      // Só agentes do Claude Code (o Codex tem o caminho dele; o Cursor não pede permissão pelo escritório).
+      if (present(sub) && (sub.provider ?? 'claude') === 'claude') return { id: subId };
     }
-    const main = office.list().find((a) => a.kind === 'main' && a.provider !== 'codex' && a.sessionId === sessionId && a.status !== 'offline');
+    const main = office.list().find((a) => a.kind === 'main' && (a.provider ?? 'claude') === 'claude' && a.sessionId === sessionId && a.status !== 'offline');
     if (!main) return undefined;
     return agentId ? { id: main.id, subagent: agentType ?? tr('subagente') } : { id: main.id };
   }

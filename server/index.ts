@@ -37,6 +37,8 @@ import { ClaudeWatcher } from './sources/watcher';
 import { discoverCodexDirs } from './sources/codex/accounts';
 import { CodexHistory } from './sources/codex/history';
 import { CodexSource } from './sources/codex/source';
+import { CursorSource } from './sources/cursor/source';
+import { TeamRoster } from './model/team';
 import { createBuildReader, readBuildInfo } from './build';
 import { UpdateChecker } from './updates/checker';
 import { getLocale, tr } from '../shared/i18n';
@@ -76,6 +78,8 @@ const names = new NameStore(join(config.dataDir, 'names.json'));
 names.load();
 // Nomes de sala escolhidos pelo usuário (botão direito > Renomear).
 const roomAliases = new RoomAliases(join(config.dataDir, 'rooms.json'));
+// Equipe (opcional): nome e papel fixos por tipo de subagente, nome do Cursor ou sessão principal (model/team.ts).
+const team = new TeamRoster(config.teamFile);
 roomAliases.load();
 
 // Office, contas e fontes de agentes se referenciam (avisos de mudança / fontes): ligação tardia.
@@ -128,6 +132,7 @@ const office = new Office({
   ptys: () => (late.ptys ? { status: late.ptys.status(), list: late.ptys.list() } : { status: { enabled: false, reason: late.ptyOff ?? tr('desligado') }, list: [] }),
   updates: () => updates.status(),
   world: () => world?.meta() ?? { enabled: false, configured: false, state: 'off' },
+  team,
 });
 // Fontes de agentes, uma por ferramenta (sources/source.ts): a do Claude Code e, depois dela, a do Codex (quando há
 // pastas do Codex; HABBLAUD_CODEX=0 desliga), com o histórico dela no HistorySet abaixo e as contas registradas por
@@ -137,6 +142,9 @@ const agents = new SourceSet([claude]);
 const codexDirs = config.codex ? discoverCodexDirs(process.env, config.home) : [];
 const codex = codexDirs.length ? new CodexSource({ accounts, office, dirs: codexDirs, env: process.env, home: config.home }) : undefined;
 if (codex) agents.add(codex);
+// Cursor CLI: as execuções feitas pelo wrapper do Habblaud (mod/habblaud-cursor/run.mjs; HABBLAUD_CURSOR=0 desliga).
+const cursor = config.cursor ? new CursorSource({ accounts, office, dir: config.cursorDir, inDocker: config.inDocker }) : undefined;
+if (cursor) agents.add(cursor);
 // Eventos dos hooks do Codex (POST /api/codex/events, mod/habblaud-codex/hook.mjs): vão para a fonte do Codex ao vivo
 // (CodexLive); sem ela (nenhuma pasta do Codex ou HABBLAUD_CODEX=0) a rota responde {ok: false}.
 const codexLive: CodexLive | undefined = codex;
@@ -490,6 +498,18 @@ server.listen(config.port, config.host, () => {
   } else {
     log.info(tr('   Codex: {0}.', [config.codex ? tr('nenhuma pasta do Codex encontrada (defina HABBLAUD_CODEX_DIRS)') : tr('desligado (HABBLAUD_CODEX=0)')]));
   }
+  if (cursor) {
+    const open = cursor.sources().reduce((n, s) => n + s.sessions, 0);
+    log.info(
+      cursor.accountEntry()
+        ? tr('   Cursor: {0} execução(ões) aberta(s) · {1}', [open, config.cursorDir])
+        : tr('   Cursor: nenhuma execução ainda em {0} (npm run cursor:install).', [config.cursorDir]),
+    );
+  } else {
+    log.info(tr('   Cursor: desligado (HABBLAUD_CURSOR=0).'));
+  }
+  const members = team.list().length;
+  if (members) log.info(tr('   Equipe: {0} pessoa(s) em {1}.', [members, config.teamFile]));
   if (office.isDemo()) log.info(tr('   Modo demonstração ligado (agentes simulados misturados aos reais).'));
   if (config.terminal) log.info(tr('   Terminal: ligado (acesso só local).'));
   else log.info(tr('   Terminal: desligado ({0}).', [terminalOffReason(process.env, config.host, config.inDocker)]));

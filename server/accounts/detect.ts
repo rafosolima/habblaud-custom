@@ -219,6 +219,11 @@ const ALIAS_TOOLS: Record<Provider, { invokes: RegExp; dir: RegExp }> = {
     invokes: /(?:^|[\s;&|(])(?:[\w.~/-]*\/)?codex(?=$|[\s;&|)])/,
     dir: /\bCODEX_HOME=(?:"([^"]*)"|'([^']*)'|([^\s;&|]+))/,
   },
+  // O Cursor CLI não tem pasta por conta: o alias só serviria para a letra (hoje não usado).
+  cursor: {
+    invokes: /(?:^|[\s;&|(])(?:[\w.~/-]*\/)?cursor-agent(?=$|[\s;&|)])/,
+    dir: /\bCURSOR_CONFIG_DIR=(?:"([^"]*)"|'([^']*)'|([^\s;&|]+))/,
+  },
 };
 
 /**

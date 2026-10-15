@@ -10,6 +10,24 @@ do meio (0.**3**.0).
 
 ## [Não lançado]
 
+### Cursor CLI no escritório e nomes da equipe
+
+- **Cursor CLI (`cursor-agent`):** um agente do Claude Code (o Tech Lead) chama "desenvolvedores" do Cursor pelo novo
+  wrapper `habblaud-cursor` (`npm run cursor:install`, que instala `~/.habblaud/bin/habblaud-cursor`): cada execução
+  aparece no escritório como um personagem com o selo **CURSOR** e chip próprio, atividade ao vivo (leitura, edição,
+  comandos, buscas, MCP, tarefas), título, modelo, tokens e o terminal só de leitura com a conversa. Chamado de uma
+  sessão aberta do Claude Code, entra como subagente dela (na sala dela, "ligado a quem chamou") e entrega ao terminar;
+  sem ela, entra como agente principal na sala da pasta. O wrapper devolve a quem chamou um resumo curto (a resposta e
+  as ferramentas usadas) e termina com `chatId: <id>`: `-- --resume <id> "correção"` manda a correção ao mesmo dev, com
+  o contexto, e ele volta como o mesmo personagem. Agentes do Cursor não recebem mensagens nem pedem permissão pelo
+  escritório (a gaveta explica). `HABBLAUD_CURSOR=0` desliga; `HABBLAUD_CURSOR_DIR` muda a pasta; o `docker:up` monta
+  só `~/.habblaud/cursor/sessions`, somente leitura.
+- **Nomes da equipe (opcional):** `~/.habblaud/team.json` (`HABBLAUD_TEAM_FILE`) dá nome e papel fixos a quem trabalha
+  no escritório, pelo tipo do subagente do Claude Code (`agentType`), pelo `--name` do Cursor (`cursorName`) ou para a
+  sessão principal (`main`, com `cwd` opcional): o personagem aparece como "Renato (TechLead)", com a aparência fixa pelo
+  nome. A mesma pessoa duas vezes ao mesmo tempo vira "Lucas 2 (Dev - Mestre)". O personagem do projeto (editor)
+  continua valendo antes da regra `main`; sem o arquivo, nada muda. Nomes e papéis nunca vão ao Habblaud World.
+
 ### Habblaud World (em desenvolvimento, desligado por padrão)
 
 A base do Habblaud World, a cidade online onde cada Habblaud vira um prédio. Sem `HABBLAUD_WORLD_URL` o recurso fica

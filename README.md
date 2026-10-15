@@ -608,6 +608,32 @@ Codex account chip is hollow and carries the **CODEX** tag.
   little while to leave after you close the terminal.
 - ChatGPT cloud conversations (with no file on the computer) don't show up. `HABBLAUD_CODEX=0` turns Codex off.
 
+### Cursor
+
+The Cursor CLI (`cursor-agent`) joins the office through Habblaud's wrapper, so a Claude Code agent (a "Tech Lead")
+can call Cursor "developers" and you see each one working, with a name and a role. Install the Cursor CLI and log in,
+run `npm run cursor:install` (it installs `~/.habblaud/bin/habblaud-cursor`), and have the Claude Code agent call:
+
+```sh
+~/.habblaud/bin/habblaud-cursor --name Lucas --role "Dev - Mestre" --dir ~/projects/shop -- "Implement endpoint X and run the tests"
+```
+
+`--name` and `--role` are required (the character shows as **Lucas (Dev - Mestre)**). The wrapper runs `cursor-agent
+-p --output-format stream-json --stream-partial-output` and returns only a short summary; the exit code is Cursor's.
+The last line is `chatId: <id>`: `-- --resume <id> "Fix the test"` sends a fix to the same dev, with the context, and
+it comes back as the **same** character. Called from an open Claude Code session, the dev joins as a **subagent** of it
+(in its room); otherwise as a main agent in the folder's room. The **CURSOR** badge marks it; no messages or
+permissions from the office. Runs are kept in `~/.habblaud/cursor/sessions/` (7 days, without the shell environment).
+`HABBLAUD_CURSOR=0` turns it off; `HABBLAUD_CURSOR_DIR` and `HABBLAUD_CURSOR_BIN` change the folder and the binary.
+
+### Team names
+
+Optional: `~/.habblaud/team.json` (or `HABBLAUD_TEAM_FILE`) gives fixed names and roles, matched by Claude Code
+subagent type (`agentType`), Cursor `--name` (`cursorName`) or main sessions (`main: true`, optional `cwd`):
+`{"members": [{"agentType": "tati-po", "name": "Tati", "role": "Product Owner"}]}`. Characters show as **Name (Role)**
+with a look fixed by the name; the same person twice becomes **Tati 2 (Product Owner)**. The project character still
+wins over `main`. Without the file nothing changes; names and roles never go to Habblaud World.
+
 ### GitHub in the office
 
 What the agents do on GitHub livens up the project's room, with no token and no internet access: Habblaud reads the
