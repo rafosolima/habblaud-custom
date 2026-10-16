@@ -118,6 +118,7 @@ describe('caixa de mensagem (peças puras)', () => {
     // O Claude Code continua como antes.
     expect(sendStatusText({ phase: 'delivered', at: 0 }, 1_000, 'claude')).toBe(sendStatusText({ phase: 'delivered', at: 0 }, 1_000));
     expect(composerTip('codex')).toMatch(/^Entra na fila da sessão e vira o próximo prompt quando o Codex terminar/);
+    expect(composerTip('cursor')).toMatch(/agent --resume/);
     expect(composerTip()).toBe('Entra na sessão como se você tivesse digitado. Enter manda; Shift+Enter quebra a linha.');
     expect(timeoutError('codex')).toBe(CODEX_TIMEOUT_ERROR);
     expect(timeoutError()).toBe(TIMEOUT_ERROR);
@@ -131,10 +132,16 @@ describe('caixa de mensagem (peças puras)', () => {
 });
 
 describe('caixa de mensagem: Cursor', () => {
-  it('agentes do Cursor não recebem mensagens (a dica diz por quê)', async () => {
+  it('sem entregador: dica do cursor:bridge', async () => {
     const { composerMode } = await import('./composer-model');
-    const { CURSOR_HINT } = await import('./provider');
+    const { CURSOR_BRIDGE_HINT } = await import('./provider');
     const agent = { id: 'cursor:r1', kind: 'main', provider: 'cursor', status: 'working', canMessage: false } as unknown as AgentInfo;
-    expect(composerMode(agent, { enabled: true, local: true, replaying: false })).toEqual({ kind: 'off', text: CURSOR_HINT });
+    expect(composerMode(agent, { enabled: true, local: true, replaying: false })).toEqual({ kind: 'hint', text: CURSOR_BRIDGE_HINT });
+  });
+
+  it('com canMessage: pronto', async () => {
+    const { composerMode } = await import('./composer-model');
+    const agent = { id: 'cursor:r1', kind: 'main', provider: 'cursor', status: 'working', canMessage: true } as unknown as AgentInfo;
+    expect(composerMode(agent, { enabled: true, local: true, replaying: false })).toEqual({ kind: 'ready' });
   });
 });

@@ -30,6 +30,7 @@ import { createPermissionRoutes } from './permissions/http';
 import { PermissionRegistry } from './permissions/registry';
 import { codexAccountOf } from './codex/http';
 import { createCodexQueueRunner, findCodexBin } from './messages/codex';
+import { createCursorAgentRunner, findCursorBin } from './messages/cursor';
 import { createMessageRoutes } from './messages/http';
 import { MessageRegistry } from './messages/registry';
 import type { CodexLive } from './sources/codex/live';
@@ -146,7 +147,7 @@ if (codex) agents.add(codex);
 // Cursor: chats em ~/.cursor/chats (IDE / cursor-agent) e execuções do wrapper (mod/habblaud-cursor/run.mjs; HABBLAUD_CURSOR=0 desliga).
 const cursorChatRoots = config.cursor ? discoverCursorRoots(process.env, config.home) : [];
 const cursor = config.cursor
-  ? new CursorSource({ accounts, office, dir: config.cursorDir, chatRoots: cursorChatRoots, home: config.home, inDocker: config.inDocker })
+  ? new CursorSource({ accounts, office, dir: config.cursorDir, chatRoots: cursorChatRoots, home: config.home, inDocker: config.inDocker, team })
   : undefined;
 if (cursor) agents.add(cursor);
 // Eventos dos hooks do Codex (POST /api/codex/events, mod/habblaud-codex/hook.mjs): vão para a fonte do Codex ao vivo
@@ -259,6 +260,7 @@ late.permissions = permissions;
 // fora do Docker o próprio servidor roda o comando (HABBLAUD_CODEX_BIN ou `codex` do PATH); no Docker, o auxiliar do
 // host (npm run codex:bridge).
 const codexBin = config.messages && !config.inDocker ? findCodexBin(process.env) : undefined;
+const cursorBin = config.messages && !config.inDocker ? findCursorBin(process.env) : undefined;
 // Terminal interativo e Novo agente: os dois rodam o Claude Code neste computador, então pedem a mesma liberação,
 // HABBLAUD_PTY=1 (aceita os mesmos valores do HABBLAUD_TERMINAL).
 const ptyFlag = process.env.HABBLAUD_PTY?.trim();
@@ -285,6 +287,7 @@ const messages = config.messages
         run: codexBin ? createCodexQueueRunner(codexBin) : undefined,
         homeOf: (account) => accounts.entriesOf('codex').find((e) => e.id === account)?.detected.configDir,
       },
+      cursor: cursorBin ? { run: createCursorAgentRunner(cursorBin) } : {},
     })
   : undefined;
 late.messages = messages;
@@ -542,6 +545,13 @@ server.listen(config.port, config.host, () => {
         : config.inDocker
           ? tr('   Mensagens ao Codex: pelo auxiliar do host (deixe npm run codex:bridge rodando no Mac).')
           : tr('   Mensagens ao Codex: sem o binário do Codex (codex no PATH ou HABBLAUD_CODEX_BIN); o auxiliar npm run codex:bridge também serve.'),
+    );
+    log.info(
+      cursorBin
+        ? tr('   Mensagens ao Cursor: pelo agent --resume ({0}).', [cursorBin])
+        : config.inDocker
+          ? tr('   Mensagens ao Cursor: pelo auxiliar do host (deixe npm run cursor:bridge rodando no computador).')
+          : tr('   Mensagens ao Cursor: deixe npm run cursor:bridge rodando (ou instale o Cursor CLI no PATH).'),
     );
   }
   if (config.world.warning) log.warn(`   ${config.world.warning}.`);

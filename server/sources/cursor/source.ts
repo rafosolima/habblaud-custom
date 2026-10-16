@@ -22,7 +22,9 @@ import type { SourceInfo } from '../../../shared/types';
 import { ACCOUNT_COLORS, type DetectedAccount } from '../../accounts/detect';
 import type { AccountEntry, AccountsService } from '../../accounts/service';
 import { errMsg, log } from '../../log';
+import type { TeamLookup } from '../../model/team';
 import type { IdentityHint, Office, TranscriptSummary } from '../../model/office';
+import { resolveCursorIdentityHint } from './identity';
 import { pidAlive } from '../registry';
 import type { AgentSource } from '../source';
 import { FileTail } from '../tail';
@@ -41,6 +43,7 @@ import {
 import { parseIdeTranscriptLine } from './ide-transcript';
 import { createCursorState, parseCursorLine, type CursorLineResult, type CursorState } from './stream';
 import { createCursorTerminalParser } from './terminal';
+import { readCursorCliProfile } from './cli-config';
 import { tr } from '../../../shared/i18n';
 
 /** Subpasta com um arquivo por execução. */
@@ -73,6 +76,8 @@ export interface CursorSourceOptions {
   home?: string;
   /** Rodando no Docker: os PIDs do meta são do host (não dá para conferir). */
   inDocker?: boolean;
+  /** Equipe (team.json): nomes dos devs Cursor. */
+  team?: TeamLookup;
   now?: () => number;
   pollMs?: number;
   isAlive?: (pid: number) => boolean;
@@ -122,8 +127,20 @@ interface ChatTracker {
   lastWriteAt: number;
   missingSince?: number;
   sessionName?: string;
+  /** subId → agentType (Task/Agent no transcript do pai). */
+  subagentTypes?: Map<string, string>;
   /** Presença de sub/main sem meta.json (mtime do transcript). */
   presentAt?: number;
+}
+
+function identityFromHint(hint: ReturnType<typeof resolveCursorIdentityHint>): IdentityHint | undefined {
+  if (!hint) return undefined;
+  return {
+    ...(hint.agentType ? { agentType: hint.agentType } : {}),
+    ...(hint.cursorName ? { cursorName: hint.cursorName } : {}),
+    ...(hint.name ? { name: hint.name } : {}),
+    ...(hint.role ? { role: hint.role } : {}),
+  };
 }
 
 function capitalize(s: string): string {
@@ -236,9 +253,27 @@ export class CursorSource implements AgentSource {
     const others = this.opts.accounts.allEntries();
     const shorts = new Set(others.map((e) => e.detected.short.toUpperCase()));
     const colors = new Set(others.map((e) => e.detected.color));
-    const short = ['R', 'K', 'Q', 'U', 'V', 'W'].find((s) => !shorts.has(s)) ?? 'R';
+    let short = 'B';
+    for (let c = 65; c <= 90; c++) {
+      const s = String.fromCharCode(c);
+      if (!shorts.has(s)) {
+        short = s;
+        break;
+      }
+    }
     const color = ['#5ec4b6', ...ACCOUNT_COLORS].find((c) => !colors.has(c)) ?? '#5ec4b6';
-    const detected: DetectedAccount = { id: CURSOR_ACCOUNT, provider: 'cursor', configDir: this.accountPath(), short, name: 'Cursor', color };
+    const profile = readCursorCliProfile(join(this.userHome(), '.cursor'));
+    const detected: DetectedAccount = {
+      id: CURSOR_ACCOUNT,
+      provider: 'cursor',
+      configDir: join(this.userHome(), '.cursor'),
+      short,
+      name: tr('Conta {0}', [short]),
+      color,
+      ...(profile?.email ? { email: profile.email } : {}),
+      ...(profile?.organization ? { organization: profile.organization } : {}),
+      ...(profile?.plan ? { plan: profile.plan } : {}),
+    };
     this.entry = this.opts.accounts.setProviderAccounts('cursor', [{ dir: this.opts.dir, detected }])[0];
   }
 
@@ -426,6 +461,13 @@ export class CursorSource implements AgentSource {
         if (!isTranscriptPresent(sub.mtimeMs, now) && !tracked?.inOffice) continue;
         subsPresent.add(key);
         const agentId = `cursor:${sub.subId}`;
+        const parentMain = this.chats.get(parentChatId);
+        if (parentMain?.state.pendingSpawns?.length) {
+          parentMain.subagentTypes ??= new Map();
+          if (!parentMain.subagentTypes.has(sub.subId)) {
+            parentMain.subagentTypes.set(sub.subId, parentMain.state.pendingSpawns.shift()!);
+          }
+        }
         let t = this.chats.get(key);
         if (!t || t.path !== sub.path) {
           if (t?.inOffice) this.leaveChat(t);
@@ -562,11 +604,8 @@ export class CursorSource implements AgentSource {
   private enterChat(t: ChatTracker, meta: CursorChatMeta, now: number): void {
     const office = this.opts.office;
     const account = this.entry?.id ?? CURSOR_ACCOUNT;
-    const identity: IdentityHint = {};
-    if (t.sessionName) {
-      identity.cursorName = t.sessionName;
-      identity.name = t.sessionName;
-    }
+    const hint = resolveCursorIdentityHint({ storeName: t.sessionName, title: meta.title, team: this.opts.team });
+    const identity = identityFromHint(hint);
     office.addMain({
       id: t.agentId,
       provider: 'cursor',
@@ -576,7 +615,7 @@ export class CursorSource implements AgentSource {
       role: MAIN_ROLE,
       startedAt: meta.updatedAtMs,
       status: 'working',
-      ...(t.sessionName ? { identity } : {}),
+      ...(identity ? { identity } : {}),
     });
     if (!office.has(t.agentId)) return;
     t.inOffice = true;
@@ -586,16 +625,22 @@ export class CursorSource implements AgentSource {
   private enterChatSub(t: ChatTracker, meta: CursorChatMeta, now: number): void {
     const office = this.opts.office;
     const account = this.entry?.id ?? CURSOR_ACCOUNT;
+    const parentChatId = t.parentAgentId?.replace(/^cursor:/, '');
+    const parent = parentChatId ? this.chats.get(parentChatId) : undefined;
+    const agentType = parent?.subagentTypes?.get(t.chatId);
+    const hint = resolveCursorIdentityHint({ agentType, team: this.opts.team });
+    const identity = identityFromHint(hint);
     const added = office.addSub({
       id: t.agentId,
       parentId: t.parentAgentId!,
       sessionId: t.chatId,
-      role: SUBAGENT_ROLE,
+      role: hint?.role ?? SUBAGENT_ROLE,
       title: t.state.title,
       background: false,
       startedAt: t.state.firstAt ?? now,
       provider: 'cursor',
       account,
+      ...(identity ? { identity } : {}),
     });
     if (!added) return;
     t.inOffice = true;
@@ -718,12 +763,10 @@ export class CursorSource implements AgentSource {
     const s = r.state;
     const m = s.meta ?? {};
     const account = this.entry?.id ?? CURSOR_ACCOUNT;
-    const identity: IdentityHint = {};
-    if (m.name) {
-      identity.cursorName = m.name;
-      identity.name = m.name;
-    }
-    if (m.role) identity.role = m.role;
+    const hint = resolveCursorIdentityHint({ storeName: m.name, role: m.role, team: this.opts.team });
+    const identity =
+      identityFromHint(hint) ??
+      (m.name ? { cursorName: m.name, name: m.name, ...(m.role ? { role: m.role } : {}) } : undefined);
     const startedAt = m.startedAt ?? s.firstAt ?? now;
     const sessionId = s.sessionId ?? m.resume ?? r.run;
     // A mesma conversa (session_id, ou o --resume) = o mesmo agente; outra execução dela ainda rodando = à parte.
@@ -742,7 +785,7 @@ export class CursorSource implements AgentSource {
         startedAt,
         provider: 'cursor',
         account,
-        ...(m.name ? { identity } : {}),
+        ...(identity ? { identity } : {}),
       });
       if (!added) return;
       r.kind = 'sub';
@@ -759,7 +802,7 @@ export class CursorSource implements AgentSource {
         role: m.role ? capitalize(m.role) : MAIN_ROLE,
         startedAt,
         status: 'working',
-        ...(m.name ? { identity } : {}),
+        ...(identity ? { identity } : {}),
       });
       if (!office.has(r.agentId)) return;
       r.kind = 'main';

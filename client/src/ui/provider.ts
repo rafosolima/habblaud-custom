@@ -85,11 +85,24 @@ export function hasCodexPermission(snap: Pick<OfficeSnapshot, 'agents'> | null):
   return !!snap?.agents.some((a) => a.permission && isCodex(a.permission) && a.status !== 'offline' && a.status !== 'done');
 }
 
-/**
- * Agente do Cursor: o escritório só observa (o wrapper grava a conversa); não há permissões nem mensagens por aqui —
- * quem conversa com ele é o agente que o chamou.
- */
-export const CURSOR_HINT = tr('Agente do Cursor: só dá para acompanhar daqui; quem conversa com ele é o agente que o chamou.');
+/** Cursor sem entregador (npm run cursor:bridge ou CLI no PATH). */
+export const CURSOR_BRIDGE_HINT = tr(
+  'Para mandar mensagens ao Cursor: deixe npm run cursor:bridge rodando no computador (com o Habblaud no Docker) ou rode o Habblaud fora do Docker com o `agent` no PATH',
+);
+
+/** Com entregador: explica que não espelha o cursor-agent interativo no terminal. */
+export const CURSOR_MIRROR_HINT = tr(
+  'Mensagens daqui usam `agent --resume` à parte: não espelham o terminal interativo do cursor-agent, e o que você digita lá só aparece aqui quando o transcript atualiza. Use um canal só — feche o cursor-agent no terminal ou mande mensagens só pelo escritório (terminal de leitura abaixo).',
+);
+
+/** Permissões pelo escritório (hooks do Cursor). */
+export const CURSOR_PERMISSIONS_HINT = tr('Para aprovar ferramentas pelo Habblaud como no Claude: `npm run cursor:hooks:install` e aprove os hooks na aba Hooks do Cursor.');
+
+/** Texto da gaveta para agentes Cursor (chats IDE / cursor-agent). */
+export function cursorDrawerHint(canMessage: boolean | undefined): string {
+  const parts = [canMessage ? CURSOR_MIRROR_HINT : CURSOR_BRIDGE_HINT, CURSOR_PERMISSIONS_HINT];
+  return parts.join(' ');
+}
 
 /** Como ver o Codex ao vivo e aprovar pelo escritório (gaveta de um agente do Codex e ajuda). */
 export const CODEX_LIVE_HINT = tr('Para ver o Codex ao vivo e aprovar pelo escritório: `npm run codex:install` e aprove os hooks em `/hooks` no Codex.');

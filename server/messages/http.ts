@@ -8,6 +8,8 @@
 //   POST /api/codex/bridge/poll (auxiliar do Codex no host, npm run codex:bridge)
 //                                         {}: 200 {messages: [{id, account, codexHome, thread, text}]} (marca a presença)
 //   POST /api/codex/bridge/ack  (auxiliar) {results: [{id, ok, error?}]}: 200 {ok: true}
+//   POST /api/cursor/bridge/poll (auxiliar do Cursor, npm run cursor:bridge)
+//   POST /api/cursor/bridge/ack
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { HttpError, readJson, sendJson } from '../http/app';
 import { InvalidRequest, MAX_OPEN, type MessageRegistry } from './registry';
@@ -59,6 +61,15 @@ export function createMessageRoutes(registry: MessageRegistry): (req: IncomingMe
     sendJson(res, 200, { ok: true });
   };
 
+  const cursorPoll = async (req: IncomingMessage, res: ServerResponse) => {
+    sendJson(res, 200, { messages: registry.cursorPoll(await readJson(req)) });
+  };
+
+  const cursorAck = async (req: IncomingMessage, res: ServerResponse) => {
+    registry.cursorAck(await readJson(req));
+    sendJson(res, 200, { ok: true });
+  };
+
   const post = (req: IncomingMessage, res: ServerResponse, handler: (req: IncomingMessage, res: ServerResponse) => Promise<void>) => {
     if ((req.method ?? 'GET') !== 'POST') return methodNotAllowed(res, 'POST');
     handler(req, res).catch((err) => fail(res, err));
@@ -70,6 +81,8 @@ export function createMessageRoutes(registry: MessageRegistry): (req: IncomingMe
     if (path === '/api/mod/inbox/ack') return post(req, res, ack);
     if (path === '/api/codex/bridge/poll') return post(req, res, codexPoll);
     if (path === '/api/codex/bridge/ack') return post(req, res, codexAck);
+    if (path === '/api/cursor/bridge/poll') return post(req, res, cursorPoll);
+    if (path === '/api/cursor/bridge/ack') return post(req, res, cursorAck);
     const m = ITEM.exec(path);
     if (!m) return sendJson(res, 404, { error: tr('rota desconhecida') });
     const method = req.method ?? 'GET';

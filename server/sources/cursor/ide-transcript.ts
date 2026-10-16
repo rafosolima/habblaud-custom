@@ -32,6 +32,20 @@ function toolDesc(name: string, input: Rec): { desc: ActivityDescription; tool: 
   return { desc: describeTool(tool, input), tool };
 }
 
+/** Tipo do subagente (renato-techlead, julia-qa, explore…) quando o Cursor lança Task/Agent. */
+export function subagentTypeFromTool(name: string, input: Rec): string | undefined {
+  const n = name.trim().toLowerCase();
+  const pick = (o: Rec) => str(o.subagent_type) ?? str(o.subagentType);
+  if (n === 'task' || n === 'agent') return pick(input);
+  if (n === 'callgenerictool' || n === 'calldynamictool') {
+    const tool = (str(input.toolName) ?? str(input.tool_name) ?? '').toLowerCase();
+    if (tool !== 'task') return undefined;
+    const args = rec(input.arguments) ?? input;
+    return pick(args);
+  }
+  return undefined;
+}
+
 export function parseIdeTranscriptLine(s: CursorState, raw: string, ctx: CursorParseContext): CursorLineResult {
   const out: CursorLineResult = { at: ctx.now, activities: [], signals: [] };
   let o: Rec | undefined;
@@ -104,6 +118,11 @@ export function parseIdeTranscriptLine(s: CursorState, raw: string, ctx: CursorP
       if (c.type === 'tool_use') {
         const name = str(c.name) ?? 'ferramenta';
         const input = rec(c.input) ?? {};
+        const spawnType = subagentTypeFromTool(name, input);
+        if (spawnType) {
+          s.pendingSpawns ??= [];
+          s.pendingSpawns.push(spawnType);
+        }
         const { desc, tool } = toolDesc(name, input);
         const id = str(c.id) ?? `t${++s.seq}`;
         s.stats.toolCalls++;

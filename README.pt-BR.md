@@ -613,7 +613,8 @@ ao vivo em `~/.cursor/projects/<projeto>/agent-transcripts/<chatId>.jsonl` — c
 Grep, Shell…), título do pedido, status ocioso/trabalhando e **terminal** de leitura. **Subagentes** do Cursor (Task em
 `agent-transcripts/<pai>/subagents/*.jsonl`) entram ligados ao chat principal, com crachá **Subagente (Cursor)**. Chats
 sem `cwd` ficam de fora; `HABBLAUD_CURSOR=0` desliga; `HABBLAUD_CURSOR_CHATS_DIRS` aponta outra raiz com `chats/`.
-Mensagens pelo escritório continuam só para Claude Code/Codex.
+Mensagens pelo escritório: Claude Code (plugin), Codex (`codex:bridge` no Docker) e **Cursor** (`npm run cursor:bridge:start` deixa o bridge em segundo plano no host com Docker; ou CLI `agent` no PATH).
+**Permissões pelo escritório (IDE):** `npm run cursor:hooks:install` (aprove os hooks na aba Hooks do Cursor); o personagem levanta a mão e o cartão **Pede permissão** funciona como no Claude Code.
 
 O Cursor CLI (`cursor-agent`) também entra pelo wrapper do Habblaud: é o jeito de um agente do Claude Code (um
 "Tech Lead") chamar "desenvolvedores" do Cursor e você ver cada um trabalhando, com nome e papel.
@@ -663,7 +664,11 @@ arquivo é só lido, e relido quando muda:
 ```
 
 - `agentType`: subagentes do Claude Code desse tipo (os agentes de `~/.claude/agents`, pelo nome do arquivo);
-- `cursorName`: execuções do Cursor com esse `--name` (o papel da equipe vale no lugar do `--role`);
+- `cursorName`: execuções do Cursor com esse `--name` (o papel da equipe vale no lugar do `--role`); também casa com o
+  `name` gravado no chat do IDE (ex.: renomeie o agente para `Lucas` ou mapeie `"Habblaud Cursor Agent"` como
+  `cursorName`);
+- `cursorIdeDefault: true` (só um membro): sessões do Cursor IDE/cursor-agent com nome genérico (`Habblaud Cursor Agent`,
+  `New Agent`…) entram com esse dev. Alternativa: `HABBLAUD_CURSOR_IDE_NAME=Lucas` no host;
 - `main: true`: as sessões principais do Claude Code (com `"cwd": "/pasta"`, só as de projetos dentro dela). O
   personagem do projeto (**Editar o personagem**) continua valendo antes desta regra.
 

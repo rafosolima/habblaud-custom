@@ -5,7 +5,7 @@
 //   {"members": [
 //     {"agentType": "renato-techlead", "name": "Renato", "role": "TechLead", "main": true},
 //     {"agentType": "tati-po", "name": "Tati", "role": "Product Owner"},
-//     {"cursorName": "Lucas", "name": "Lucas", "role": "Dev - Mestre"}
+//     {"cursorName": "Lucas", "name": "Lucas", "role": "Dev - Mestre", "cursorIdeDefault": true}
 //   ]}
 //
 // Casamentos (ver Office): `agentType` = tipo do subagente do Claude Code (o `agentType` do .meta.json ou o
@@ -23,6 +23,8 @@ export interface TeamMember {
   role?: string;
   agentType?: string;
   cursorName?: string;
+  /** Sessão do Cursor IDE sem --name (ex.: "Habblaud Cursor Agent"): usa este dev quando só houver um com a flag. */
+  cursorIdeDefault?: boolean;
   main?: boolean;
   /** Com `main`: só sessões em projetos dentro desta pasta (normalizada). */
   cwd?: string;
@@ -32,6 +34,7 @@ export interface TeamMember {
 export interface TeamLookup {
   subagent(agentType: string): TeamMember | undefined;
   cursor(name: string): TeamMember | undefined;
+  cursorIdeDefault(): TeamMember | undefined;
   main(cwd: string): TeamMember | undefined;
 }
 
@@ -63,10 +66,11 @@ export function parseTeam(raw: unknown): TeamMember[] {
     if (agentType) m.agentType = agentType;
     const cursorName = clean(v.cursorName, NAME_MAX);
     if (cursorName) m.cursorName = cursorName;
+    if (v.cursorIdeDefault === true) m.cursorIdeDefault = true;
     if (v.main === true) m.main = true;
     const cwd = clean(v.cwd, 4_096);
     if (cwd) m.cwd = normalizeCwd(cwd);
-    if (m.agentType || m.cursorName || m.main) out.push(m);
+    if (m.agentType || m.cursorName || m.main || m.cursorIdeDefault) out.push(m);
   }
   return out;
 }
@@ -105,6 +109,11 @@ export class TeamRoster implements TeamLookup {
   cursor(name: string): TeamMember | undefined {
     const k = nameKey(name);
     return k ? this.list().find((m) => m.cursorName !== undefined && nameKey(m.cursorName) === k) : undefined;
+  }
+
+  cursorIdeDefault(): TeamMember | undefined {
+    const picks = this.list().filter((m) => m.cursorIdeDefault);
+    return picks.length === 1 ? picks[0] : undefined;
   }
 
   main(cwd: string): TeamMember | undefined {

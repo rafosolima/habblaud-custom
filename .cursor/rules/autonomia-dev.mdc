@@ -1,0 +1,10 @@
+---
+description: Autonomia no dev; só pedir confirmação em production
+alwaysApply: true
+---
+
+# Autonomia (dev) vs confirmação (production)
+
+Mesma política do ecossistema dev-agents: no dia a dia **execute sem pedir OK**; **pergunte só** antes de coisas de **production** (deploy prod, DB prod, secrets prod, force push em branch protegida, etc.). Staging e local = liberado.
+
+Commits/push só quando o usuário pedir. Habblaud World: dados verdadeiros sempre.

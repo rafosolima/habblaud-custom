@@ -14,6 +14,31 @@ describe('sourceLabel', () => {
     expect(sourceLabel({ source: 'statusline', fetchedAt: 0 })).toBe('ao vivo (statusline do Claude Code)');
     expect(sourceLabel({ source: 'cache', fetchedAt: 0 })).toBe('cache do /usage do Claude Code');
     expect(sourceLabel({ source: 'codex', fetchedAt: 0 })).toBe('arquivos do Codex');
+    expect(sourceLabel({ source: 'cursor', fetchedAt: 0 })).toBe('API do Cursor (/usage)');
+  });
+});
+
+describe('cartão de uso da conta Cursor', () => {
+  const cursor = (over: Partial<Acc> = {}): Acc => ({
+    provider: 'cursor',
+    usageStatus: 'ok',
+    configDir: '~/.cursor',
+    email: 'dev@example.com',
+    plan: 'Team',
+    ...over,
+  });
+
+  it('com Included/Auto na leitura, o cartão tem janelas (barras no topo, como o Claude)', () => {
+    const withUsage = cursor({
+      usage: { source: 'cursor', fetchedAt: 0, fiveHour: win, sevenDay: { utilization: 11, resetsAt: win.resetsAt } },
+    });
+    expect(cardState(withUsage)).toBe('ok');
+    expect(usageSubtitle({ ...withUsage, sessions: 2 })).toBe('dev@example.com');
+  });
+
+  it('sem leitura: mensagem de pull, não barras', () => {
+    expect(cardState(cursor())).toBe('empty');
+    expect(usageMessage(cursor())).toEqual(['sem dados de uso', 'sem dados']);
   });
 });
 

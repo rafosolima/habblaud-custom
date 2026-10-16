@@ -324,7 +324,7 @@ export function renderOverride(
   codex: AccountMount[] = [],
   remoteTlsDir?: string,
   extraPorts: string[] = [],
-  extra: { cursorSessions?: string; cursorIde?: { chats: string; projects: string }; teamFile?: string } = {},
+  extra: { cursorSessions?: string; cursorIde?: { chats: string; projects: string; cliConfig?: string }; teamFile?: string } = {},
 ): string {
   const env: Array<[string, string]> = [
     ['HABBLAUD_CLAUDE_DIRS', mounts.map((m) => m.mountDir).join(',')],
@@ -356,6 +356,9 @@ export function renderOverride(
   if (extra.cursorIde) {
     binds.push({ source: extra.cursorIde.chats, target: `${CONTAINER_CURSOR_IDE}/chats` });
     binds.push({ source: extra.cursorIde.projects, target: `${CONTAINER_CURSOR_IDE}/projects` });
+    if (extra.cursorIde.cliConfig) {
+      binds.push({ source: extra.cursorIde.cliConfig, target: `${CONTAINER_CURSOR_IDE}/cli-config.json` });
+    }
   }
   if (extra.teamFile) binds.push({ source: extra.teamFile, target: CONTAINER_TEAM_FILE });
   if (binds.length) {
@@ -537,11 +540,19 @@ function ensureCursorSessions(): string | undefined {
 }
 
 /** Chats e transcripts do Cursor IDE no host (~/.cursor/chats e projects), para o escritório automático no container. */
-function ensureCursorIde(home: string): { chats: string; projects: string } | undefined {
+function ensureCursorIde(home: string): { chats: string; projects: string; cliConfig?: string } | undefined {
   const chats = realDir(join(home, '.cursor', 'chats'));
   const projects = realDir(join(home, '.cursor', 'projects'));
   if (!chats || !projects) return undefined;
-  return { chats, projects };
+  const cliConfig = (() => {
+    try {
+      const p = join(home, '.cursor', 'cli-config.json');
+      return statSync(p).isFile() ? p : undefined;
+    } catch {
+      return undefined;
+    }
+  })();
+  return { chats, projects, ...(cliConfig ? { cliConfig } : {}) };
 }
 
 function ensureUsageDir(): string | undefined {
@@ -800,6 +811,10 @@ async function up(opts: Options, port: number): Promise<void> {
   if (plan.cleanup.length && !copyFailed) say(tr('  Sobrou do CodeTown; depois de conferir o escritório, apague com: {0}', [plan.cleanup.join(' · ')]));
   say(`  ${worldLine(process.env, readEnvFile())}`);
   say(tr('  Logs: npm run docker:logs · Parar: npm run docker:down'));
+  if (!cursorDisabled(process.env)) {
+    say(tr('  Mensagens ao Cursor (Docker): npm run cursor:bridge:start (deixa o bridge em segundo plano no host).'));
+    say(tr('  Permissões do Cursor (IDE): npm run cursor:hooks:install (aprove os hooks na aba Hooks do Cursor).'));
+  }
 }
 
 /**

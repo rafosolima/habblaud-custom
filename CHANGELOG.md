@@ -12,12 +12,24 @@ do meio (0.**3**.0).
 
 ### Cursor CLI no escritório e nomes da equipe
 
+- **Permissões do Cursor pelo escritório:** `npm run cursor:hooks:install` acrescenta hooks em `~/.cursor/hooks.json`
+  (`--auto-allow` ou `"autoAllow": true` em `~/.habblaud/cursor-hook.json` faz o hook sempre aprovar, sem esperar o escritório).
+  (`preToolUse`, `beforeShellExecution`, `beforeMCPExecution`) que registram pedidos em `/api/permissions` com
+  `provider: "cursor"` (session = `conversation_id` do chat). Com o Habblaud aberto em localhost, o personagem levanta
+  a mão e o cartão **Pede permissão** funciona como no Claude Code; sem resposta a tempo, vale a aprovação normal do IDE.
 - **Cursor IDE e `cursor-agent` no escritório:** o Habblaud acha sozinho `~/.cursor/chats` e lê o transcript ao vivo em
   `~/.cursor/projects/<projeto>/agent-transcripts/<chatId>.jsonl` (como no Claude Code: atividades, título, tokens
   parciais, terminal de leitura e **subagentes** (Task/subagent em `agent-transcripts/<pai>/subagents/*.jsonl`,
-  ligados ao principal Cursor no escritório; mensagens pelo escritório continuam só para Claude/Codex). No Docker, o
+  ligados ao principal Cursor no escritório). **Mensagens ao Cursor** pelo escritório (`npm run cursor:bridge` no host
+  com Docker, ou `agent` no PATH fora do Docker; entrega com `agent --resume`; `npm run cursor:bridge:start` deixa o bridge em segundo plano no host). A conta Cursor no topo vira **Conta B** (mesma letra das outras contas) com sessões abertas, sem cartão de cota Claude. Mensagens pelo Claude/Codex como antes. No Docker, o
   `docker:up` monta também `~/.cursor/chats` e `~/.cursor/projects` (somente leitura). O wrapper `habblaud-cursor`
-  continua valendo para devs chamados pelo Claude Code, com atividade ao vivo e terminal.
+  continua valendo para devs chamados pelo Claude Code, com atividade ao vivo e terminal. A gaveta e a dica da caixa
+  de mensagem explicam que o escritório não espelha o `cursor-agent` interativo no terminal (mensagens usam
+  `agent --resume` à parte). A **Conta B (Cursor)** mostra e-mail/time do `cli-config.json` quando montado; o cartão de uso
+  explica o plano mensal (Team). **Uso Included/Auto no topo:** `npm run cursor:usage:pull` no host (mesma API do `/usage`) grava
+  `~/.habblaud/usage/.cursor.json`; o `cursor:bridge` também atualiza a cada 5 min. Chats do IDE com nome genérico no
+  `store.db` usam `cursorIdeDefault` (ou alias em `cursorName`) do `team.json`, como o `--name` do `habblaud-cursor`. As barras **Auto** e **Incl.** ficam
+  visíveis no cartão da Conta B ao abrir o Habblaud (como no Claude), sem precisar passar o mouse.
 - **Cursor CLI (`cursor-agent`):** um agente do Claude Code (o Tech Lead) chama "desenvolvedores" do Cursor pelo novo
   wrapper `habblaud-cursor` (`npm run cursor:install`, que instala `~/.habblaud/bin/habblaud-cursor`): cada execução
   aparece no escritório como um personagem com o selo **CURSOR** e chip próprio, atividade ao vivo (leitura, edição,

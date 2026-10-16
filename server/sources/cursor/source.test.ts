@@ -33,6 +33,10 @@ function setup(opts: { alive?: Set<number>; inDocker?: boolean; team?: TeamMembe
   const team: TeamLookup = {
     subagent: (t) => members.find((m) => m.agentType === t),
     cursor: (n) => members.find((m) => m.cursorName?.toLowerCase() === n.toLowerCase()),
+    cursorIdeDefault: () => {
+      const picks = members.filter((m) => m.cursorIdeDefault);
+      return picks.length === 1 ? picks[0] : undefined;
+    },
     main: () => members.find((m) => m.main),
   };
   const office = new Office({
@@ -47,12 +51,13 @@ function setup(opts: { alive?: Set<number>; inDocker?: boolean; team?: TeamMembe
   });
   late.office = office;
   const alive = opts.alive ?? new Set([4242]);
-  const source = new CursorSource({
+    const source = new CursorSource({
     accounts,
     office,
     dir: dir.dir,
     chatRoots: opts.chatRoots,
     home: opts.home,
+    team,
     now,
     watch: false,
     inDocker: opts.inDocker,
@@ -105,7 +110,7 @@ describe('fonte do Cursor: execuções do wrapper no escritório', () => {
       model: 'Composer 2.5',
     });
     expect(a.activity?.text).toBe('Rodando testes');
-    expect(ctx.office.commit().snapshot.accounts.find((x) => x.id === '.cursor')).toMatchObject({ provider: 'cursor', name: 'Cursor' });
+    expect(ctx.office.commit().snapshot.accounts.find((x) => x.id === '.cursor')).toMatchObject({ provider: 'cursor', short: 'A', name: 'Conta A' });
     expect(ctx.source.sources()).toEqual([{ label: '.cursor', provider: 'cursor', path: ctx.dir.dir, sessions: 1, ok: true }]);
     expect(ctx.source.transcriptPathOf(AID)).toMatch(/r1\.jsonl$/);
     expect(new SourceSet([ctx.source]).parserFor(AID).push(C.user('oi', 1))).toEqual([expect.objectContaining({ kind: 'user', text: 'oi' })]);
@@ -293,6 +298,40 @@ describe('fonte do Cursor: chats do IDE / cursor-agent', () => {
     expect(new SourceSet([ctx.source]).parserFor(id).push(JSON.stringify({ role: 'user', message: { content: [{ type: 'text', text: 'oi' }] } }))).toEqual([
       expect.objectContaining({ kind: 'user' }),
     ]);
+  });
+
+  it('chat do IDE com nome genérico no store.db usa cursorIdeDefault do team.json', () => {
+    const tmp = cursorDir();
+    cleanups.push(tmp.cleanup);
+    const home = join(tmp.dir, 'home');
+    const chatRoot = join(home, '.cursor');
+    const chatId = 'ide-generic-name';
+    const cwd = '/home/x/habblaud';
+    const chatDir = join(chatRoot, 'chats', 'p', chatId);
+    mkdirSync(chatDir, { recursive: true });
+    const t = Date.now();
+    writeFileSync(join(chatDir, 'meta.json'), JSON.stringify({ updatedAtMs: t, cwd, title: 'Habblaud Cursor Agent', hasConversation: true }));
+    const hex = Buffer.from(JSON.stringify({ name: 'Habblaud Cursor Agent', lastUsedModel: 'composer-2.5' }), 'utf8').toString('hex');
+    const { DatabaseSync } = require('node:sqlite') as typeof import('node:sqlite');
+    const db = new DatabaseSync(join(chatDir, 'store.db'));
+    db.exec("CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT)");
+    db.prepare("INSERT INTO meta (key, value) VALUES ('0', ?)").run(hex);
+    db.close();
+    const slug = 'home-x-habblaud';
+    const transcript = join(chatRoot, 'projects', slug, 'agent-transcripts', chatId, `${chatId}.jsonl`);
+    mkdirSync(join(transcript, '..'), { recursive: true });
+    writeFileSync(
+      transcript,
+      JSON.stringify({ role: 'user', message: { content: [{ type: 'text', text: '<user_query>\nOi\n</user_query>' }] } }) + '\n',
+    );
+    const ctx = setup({
+      chatRoots: [chatRoot],
+      home,
+      team: [{ cursorName: 'Lucas', name: 'Lucas', role: 'Dev - Mestre', cursorIdeDefault: true }],
+    });
+    ctx.source.boot();
+    ctx.poll();
+    expect(ctx.agent(`cursor:${chatId}`)).toMatchObject({ name: 'Lucas (Dev - Mestre)', provider: 'cursor' });
   });
 
   it('subagente no transcript do pai entra ligado ao principal Cursor', () => {

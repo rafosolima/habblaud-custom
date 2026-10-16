@@ -10,9 +10,9 @@
 import type { AccountInfo } from '../../../shared/types';
 import type { UiContext } from './context';
 import { h, KeyedList, setAttr, setHidden, setStyleVar, setText, setTitle, setVariant } from './dom';
-import { FIVE_HOURS_MS, relativeTime, usageLevel, usageWindowView, WEEK_MS, type UsageWindowView } from './format';
+import { relativeTime, usageLevel, usageWindowMs, usageWindowView, type UsageWindowView } from './format';
 import { ICONS } from './icons';
-import { isCodex } from './provider';
+import { isCodex, isCursor } from './provider';
 import { usageRowFits } from './usage-row';
 import { createAccountChip, createProviderTag, updateAccountChip, updateProviderTag } from './widgets';
 import { tr } from '../../../shared/i18n';
@@ -21,6 +21,7 @@ export const SOURCE_LABEL: Record<NonNullable<AccountInfo['usage']>['source'], s
   cache: tr('cache do /usage do Claude Code'),
   statusline: tr('ao vivo (statusline do Claude Code)'),
   codex: tr('arquivos do Codex'),
+  cursor: tr('API do Cursor (/usage)'),
 };
 
 /** Origem para mostrar: o arquivo ao vivo pode ter sido gravado pelo mod do Habblaud ou pelo tap. */
@@ -175,7 +176,13 @@ export function showsUsageAge(a: Pick<AccountInfo, 'usage' | 'usageStatus' | 'pr
 }
 
 /** Linha embaixo do nome: e-mail; no Codex (sem e-mail), o plano; nas outras, a pasta. */
-export function usageSubtitle(a: Pick<AccountInfo, 'email' | 'plan' | 'configDir' | 'provider'>): string {
+export function usageSubtitle(a: Pick<AccountInfo, 'email' | 'plan' | 'configDir' | 'provider' | 'sessions'>): string {
+  if (isCursor(a)) {
+    if (a.email) return a.email;
+    return a.sessions
+      ? tr('{0} sessão(ões) Cursor no escritório', [a.sessions])
+      : tr('Cursor IDE · nenhuma sessão aberta');
+  }
   if (a.email) return a.email;
   if (isCodex(a)) return a.plan ? tr('plano {0}', [a.plan]) : 'Codex';
   return a.configDir;
@@ -218,8 +225,13 @@ export class UsageCards {
   }
 
   render(): void {
-    // O Cursor não tem uso do plano para mostrar (só o escritório o observa): fica fora do painel.
-    const accounts = (this.ctx.store.snapshot?.accounts ?? []).filter((a) => a.provider !== 'cursor');
+    const accounts = [...(this.ctx.store.snapshot?.accounts ?? [])].sort((a, b) => {
+      const sa = a.sessions ?? 0;
+      const sb = b.sessions ?? 0;
+      if (sa !== sb) return sb - sa;
+      if (isCursor(a) !== isCursor(b)) return isCursor(a) ? -1 : 1;
+      return a.name.localeCompare(b.name);
+    });
     this.list.sync(accounts);
     this.el.classList.toggle('is-empty', accounts.length === 0);
     setStyleVar(this.el, '--count', String(accounts.length));
@@ -338,23 +350,38 @@ export class UsageCards {
     const r = this.refs.get(card)!;
     const now = this.ctx.now();
     const codex = isCodex(a);
+    const cursor = isCursor(a);
     updateAccountChip(r.chip, a);
     setStyleVar(card, '--acc', a.color);
     setText(r.name, a.name);
-    updateProviderTag(r.prov, codex ? 'codex' : 'claude', a.name);
+    updateProviderTag(r.prov, cursor ? 'cursor' : codex ? 'codex' : 'claude', a.name);
     setText(r.email, usageSubtitle(a));
-    setAttr(card, 'aria-label', tr('{0}{1}: uso do plano', [a.name, codex ? ' (Codex)' : '']));
+    setAttr(
+      card,
+      'aria-label',
+      cursor ? tr('{0} (Cursor)', [a.name]) : tr('{0}{1}: uso do plano', [a.name, codex ? ' (Codex)' : '']),
+    );
 
     const usage = a.usage;
     const state = cardState(a);
     setVariant(card, 'is-', state);
-    const five = usage ? usageWindowView(usage.fiveHour, usage.fetchedAt, now, FIVE_HOURS_MS) : null;
-    const week = usage ? usageWindowView(usage.sevenDay, usage.fetchedAt, now, WEEK_MS) : null;
+    const five = usage ? usageWindowView(usage.fiveHour, usage.fetchedAt, now, usageWindowMs(usage.source, 'five')) : null;
+    const week = usage ? usageWindowView(usage.sevenDay, usage.fetchedAt, now, usageWindowMs(usage.source, 'week')) : null;
     const showMeters = hasWindows(a);
     setHidden(r.meters, !showMeters);
     if (usage && showMeters) {
-      updateMeter(r.five, five, tr('Sessão de 5 horas'));
-      updateMeter(r.week, week, tr('Semana'));
+      const fiveLabel = cursor && usage.source === 'cursor' ? tr('Auto (Cursor)') : tr('Sessão de 5 horas');
+      const weekLabel = cursor && usage.source === 'cursor' ? tr('Included (Cursor)') : tr('Semana');
+      updateMeter(r.five, five, fiveLabel);
+      updateMeter(r.week, week, weekLabel);
+      const fiveLabelEl = r.five.el.querySelector('.ui-meter__label-long') as HTMLElement | null;
+      const weekLabelEl = r.week.el.querySelector('.ui-meter__label-long') as HTMLElement | null;
+      const fiveShort = r.five.el.querySelector('.ui-meter__label-short') as HTMLElement | null;
+      const weekShort = r.week.el.querySelector('.ui-meter__label-short') as HTMLElement | null;
+      if (fiveLabelEl) setText(fiveLabelEl, cursor && usage.source === 'cursor' ? tr('Auto') : '5h');
+      if (weekLabelEl) setText(weekLabelEl, cursor && usage.source === 'cursor' ? tr('Incl.') : tr('Semana'));
+      if (fiveShort) setText(fiveShort, cursor && usage.source === 'cursor' ? tr('Auto') : '5h');
+      if (weekShort) setText(weekShort, cursor && usage.source === 'cursor' ? tr('Incl.') : tr('Sem.'));
     }
     r.meters.classList.toggle('is-dim', state !== 'ok');
 
@@ -379,10 +406,14 @@ export class UsageCards {
     // Sem números: "sem dados de uso" + "Como ativar" (no Codex, "Como funciona": não há o que instalar). Sem cota:
     // a mensagem, sem botão.
     const [msgLong, msgShort] = usageMessage(a);
-    setText(r.msgLong, msgLong);
-    setText(r.msgShort, msgShort);
-    setHidden(r.msg, state !== 'empty' && state !== 'noquota');
-    setHidden(r.how, state === 'noquota');
+    const cursorEmpty = cursor && state === 'empty';
+    setText(
+      r.msgLong,
+      cursorEmpty ? tr('Plano mensal (Team): rode `npm run cursor:usage:pull` no host (ou deixe o cursor:bridge ativo).') : msgLong,
+    );
+    setText(r.msgShort, cursorEmpty ? tr('uso') : msgShort);
+    setHidden(r.msg, cursor ? !cursorEmpty : state !== 'empty' && state !== 'noquota');
+    setHidden(r.how, cursor || state === 'noquota');
     r.msg.classList.toggle('is-noquota', state === 'noquota');
     setTitle(r.msg, state === 'noquota' ? codexUsageNote(a, now) : '');
     setText(r.howLong, codex ? tr('Como funciona') : tr('Como ativar'));
@@ -394,8 +425,13 @@ export class UsageCards {
 
   private updateTip(r: CardRefs, a: AccountInfo, state: CardState, five: UsageWindowView | null, week: UsageWindowView | null, now: number): void {
     const codex = isCodex(a);
-    setText(r.tipTitle, `${a.name}${codex && !/codex/i.test(a.name) ? ' · Codex' : ''}${a.plan ? tr(' · plano {0}', [a.plan]) : ''}`);
+    const cursor = isCursor(a);
+    setText(
+      r.tipTitle,
+      `${a.name}${cursor && !/cursor/i.test(a.name) ? ' · Cursor' : ''}${codex && !/codex/i.test(a.name) ? ' · Codex' : ''}${a.plan ? tr(' · plano {0}', [a.plan]) : ''}`,
+    );
     const rows: [string, string][] = [];
+    if (cursor) rows.push([tr('Ferramenta'), 'Cursor']);
     if (codex) rows.push([tr('Ferramenta'), 'Codex']);
     if (a.email) rows.push(['E-mail', a.email]);
     if (a.organization) rows.push([tr('Organização'), a.organization]);
@@ -404,11 +440,13 @@ export class UsageCards {
     rows.push([tr('Sessões abertas'), String(a.sessions)]);
     const u = a.usage;
     if (u && (u.fiveHour || u.sevenDay)) {
-      rows.push([tr('Sessão de 5 h'), five?.summary ?? '—']);
-      rows.push([tr('Semana'), week?.summary ?? '—']);
+      const fiveRow = cursor ? tr('Auto (Cursor)') : tr('Sessão de 5 h');
+      const weekRow = cursor ? tr('Included (Cursor)') : tr('Semana');
+      rows.push([fiveRow, five?.summary ?? '—']);
+      rows.push([weekRow, week?.summary ?? '—']);
       // Opus e Sonnet são janelas do Claude: no Codex não existem.
-      const opus = codex ? null : usageWindowView(u.sevenDayOpus, u.fetchedAt, now, WEEK_MS);
-      const sonnet = codex ? null : usageWindowView(u.sevenDaySonnet, u.fetchedAt, now, WEEK_MS);
+      const opus = codex || cursor ? null : usageWindowView(u.sevenDayOpus, u.fetchedAt, now, usageWindowMs(u.source, 'week'));
+      const sonnet = codex || cursor ? null : usageWindowView(u.sevenDaySonnet, u.fetchedAt, now, usageWindowMs(u.source, 'week'));
       if (opus) rows.push([tr('Opus (semana)'), opus.summary]);
       if (sonnet) rows.push([tr('Sonnet (semana)'), sonnet.summary]);
     }
@@ -420,6 +458,22 @@ export class UsageCards {
     syncRows(r.tipRows, rows);
 
     // Codex: a explicação dele, sem o passo a passo do Claude Code (não há o que instalar para o uso).
+    if (cursor) {
+      setText(
+        r.tipNote,
+        u?.source === 'cursor'
+          ? tr(
+              'Included e Auto vêm da mesma API do `/usage` do cursor-agent (arquivo ~/.habblaud/usage/.cursor.json no host). API fica no `/usage` ou no dashboard. Mensagens: npm run cursor:bridge.',
+            )
+          : tr(
+              'O `/usage` do cursor-agent mostra Included, Auto e API. No host: `npm run cursor:usage:pull` ou deixe o cursor:bridge rodando (atualiza a cada 5 min).',
+            ),
+      );
+      setHidden(r.tipNote, false);
+      setHidden(r.tipSetup, true);
+      return;
+    }
+
     if (codex) {
       const note = codexUsageNote(a, now);
       setText(r.tipNote, note);

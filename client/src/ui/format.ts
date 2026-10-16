@@ -1,4 +1,5 @@
 // Formatação no idioma ativo (PT-BR por padrão) (tempos, números, uso). Funções puras: sem DOM, testadas em ui/format.test.ts.
+import type { AccountUsage } from '../../../shared/types';
 import { intlLocale, tr } from '../../../shared/i18n';
 
 const SECOND = 1_000;
@@ -105,6 +106,14 @@ export function compactDuration(ms: number): string {
 
 export const FIVE_HOURS_MS = 5 * HOUR;
 export const WEEK_MS = 7 * DAY;
+/** Ciclo mensal do Cursor (Included/Auto): fallback quando não há `resetsAt` na leitura. */
+export const CURSOR_BILLING_MS = 32 * DAY;
+
+/** Duração da janela para decidir se a leitura “renovou” (Claude: 5 h / semana; Cursor: ciclo mensal). */
+export function usageWindowMs(source: AccountUsage['source'] | undefined, kind: 'five' | 'week'): number {
+  if (source === 'cursor') return CURSOR_BILLING_MS;
+  return kind === 'five' ? FIVE_HOURS_MS : WEEK_MS;
+}
 
 /** Apresentação de uma janela de uso (5 h ou semana), já considerando a idade dos números. */
 export interface UsageWindowView {

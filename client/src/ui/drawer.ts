@@ -41,7 +41,7 @@ import {
 import { access } from '../net/access';
 import { PermissionCard } from './permission';
 import { canRenameRoom } from './roomrename';
-import { accountChipLabel, accountProvider, CODEX_LIVE_HINT, codexApprovalLabel, CURSOR_HINT, PROVIDER_NAME, providerOf } from './provider';
+import { accountChipLabel, accountProvider, CODEX_LIVE_HINT, codexApprovalLabel, cursorDrawerHint, PROVIDER_NAME, providerOf } from './provider';
 import { ptyControllable } from './ptyapi';
 import { createAgentRow, updateAgentRow } from './rows';
 import { SocialSection } from './social';
@@ -404,7 +404,7 @@ class AgentView {
     ]);
     const statsSec = section(tr('Estatísticas'), this.stats.el);
     this.codexHint = h('p', { class: 'ui-codex-hint', hidden: true }, ...richText(CODEX_LIVE_HINT));
-    this.cursorHint = h('p', { class: 'ui-codex-hint', hidden: true, text: CURSOR_HINT });
+    this.cursorHint = h('p', { class: 'ui-codex-hint', hidden: true });
 
     this.el = h(
       'div',
@@ -665,7 +665,9 @@ class AgentView {
 
     // Codex: como ter o ao vivo e as aprovações por aqui (o servidor ainda não diz se os hooks dele estão ligados).
     setHidden(this.codexHint, !codex || a.kind !== 'main' || !live || this.ctx.store.replaying);
-    setHidden(this.cursorHint, provider !== 'cursor' || !live || this.ctx.store.replaying);
+    const showCursorHint = provider === 'cursor' && live && !this.ctx.store.replaying;
+    setHidden(this.cursorHint, !showCursorHint);
+    if (showCursorHint) setText(this.cursorHint, cursorDrawerHint(agent.canMessage));
   }
 
   /** Lista as perguntas pendentes com as opções, só para leitura (sem o pedido no escritório, a resposta é no Claude Code). */

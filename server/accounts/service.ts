@@ -9,6 +9,7 @@ import type { AccountInfo, AccountUsage, Provider } from '../../shared/types';
 import { log } from '../log';
 import { detectAccounts, type DetectedAccount } from './detect';
 import { StatuslineUsageReader, type StatuslineUsage } from './statusline';
+import { cursorUsageFilePath, CURSOR_USAGE_ACCOUNT, readCursorUsageFile } from './cursor-usage';
 import { usageFromCache, UsageStore, type UsageSource, type UsageView } from './usage';
 import { tr } from '../../shared/i18n';
 
@@ -84,8 +85,25 @@ export class AccountsService {
       if (cache) changed = this.usage.set(e.id, cache) || changed;
       else changed = this.usage.clear(e.id, 'cache') || changed;
     }
+    changed = this.refreshCursorUsageFile() || changed;
     if (this.usageViewChanged()) changed = true;
     if (changed) this.opts.onChange();
+  }
+
+  /** ~/.habblaud/usage/.cursor.json (cursor:usage:pull ou cursor:bridge no host). */
+  refreshCursorUsageFile(): boolean {
+    if (!this.opts.usageDir) return false;
+    const path = cursorUsageFilePath(this.opts.usageDir);
+    const u = readCursorUsageFile(path);
+    const cursorIds = new Set([CURSOR_USAGE_ACCOUNT, ...this.entriesOf('cursor').map((e) => e.id)]);
+    if (!u) {
+      let changed = false;
+      for (const id of cursorIds) changed = this.usage.clear(id, 'cursor') || changed;
+      return changed;
+    }
+    let changed = false;
+    for (const id of cursorIds) changed = this.usage.set(id, u) || changed;
+    return changed;
   }
 
   /**

@@ -958,6 +958,11 @@
   cursor: default;
 }
 
+/* Com barras visíveis (Claude ou Cursor), não comprimir até sumir Auto/Incl. ou 5h/Sem. */
+.ui-usage-card:has(.ui-usage-card__meters:not([hidden])) {
+  min-width: 200px;
+}
+
 .ui-usage-card:hover,
 .ui-usage-card:focus-visible,
 .ui-usage-card:focus-within {

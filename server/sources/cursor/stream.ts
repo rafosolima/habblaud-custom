@@ -230,6 +230,8 @@ export interface CursorState {
   /** Última linha que gerou texto ou raciocínio (pedaços seguidos viram uma atividade só). */
   streaming?: 'assistant' | 'thinking';
   seq: number;
+  /** Tipos de subagente (Task/Agent) vistos no transcript, na ordem do spawn. */
+  pendingSpawns?: string[];
 }
 
 export function createCursorState(): CursorState {

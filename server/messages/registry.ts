@@ -17,12 +17,16 @@
 // auxiliar do host (npm run codex:bridge) busca em POST /api/codex/bridge/poll e confirma em
 // POST /api/codex/bridge/ack. Mesmos estados, prazos e limites; canMessage = há entregador (o binário no modo Node ou
 // o auxiliar visto há até PRESENCE_MS). `delivered` = entrou na fila da sessão (entra quando ela ficar ociosa).
+//
+// Agentes do Cursor (IDE / cursor-agent): vão por `agent -p --resume` (messages/cursor.ts). No Docker ou sem binário no
+// servidor, o auxiliar npm run cursor:bridge no host entrega via POST /api/cursor/bridge/poll e /ack.
 import { randomBytes } from 'node:crypto';
 import { truncate } from '../../shared/activity';
 import { describeMessage, MESSAGE_MAX } from '../../shared/messages';
 import type { Activity, AgentInfo, InboxMessage, OutboxMessage } from '../../shared/types';
 import { errMsg, log } from '../log';
 import type { CodexQueueResult, CodexQueueRunner } from './codex';
+import type { CursorAgentResult, CursorAgentRunner } from './cursor';
 import { tr } from '../../shared/i18n';
 
 /** Sessão que perguntou pela caixa de entrada há até este tempo: recebe mensagens (canMessage). */
@@ -53,6 +57,14 @@ export const ERR_CODEX_SLOW = tr('o Codex demorou demais com as mensagens anteri
 export const ERR_CODEX_NOT_CONFIRMED = tr('o auxiliar do Codex não confirmou a entrega');
 export const ERR_CODEX_HOME = tr('a pasta da conta do Codex deste agente é desconhecida');
 export const ERR_CODEX_REFUSED = tr('o codex queue não aceitou a mensagem');
+export const ERR_CURSOR_UNAVAILABLE = tr(
+  'não há como entregar ao Cursor agora: instale o Cursor CLI (`cursor-agent login`) e deixe o npm run cursor:bridge rodando no computador (ou rode o Habblaud fora do Docker com o `agent` no PATH)',
+);
+export const ERR_CURSOR_NOT_FETCHED = tr('o auxiliar do Cursor não buscou a mensagem: o npm run cursor:bridge está rodando?');
+export const ERR_CURSOR_SLOW = tr('o Cursor demorou demais com as mensagens anteriores a este agente');
+export const ERR_CURSOR_NOT_CONFIRMED = tr('o auxiliar do Cursor não confirmou a entrega');
+export const ERR_CURSOR_CWD = tr('a pasta deste agente do Cursor é desconhecida');
+export const ERR_CURSOR_REFUSED = tr('o Cursor não aceitou a mensagem');
 
 const ERROR_MAX = 300;
 const ID_MAX = 300;
@@ -74,6 +86,11 @@ export interface CodexDeliveryOptions {
   homeOf: (account: string) => string | undefined;
 }
 
+/** Entregador do Cursor (`agent --resume`). */
+export interface CursorDeliveryOptions {
+  run?: CursorAgentRunner;
+}
+
 export interface MessageRegistryOptions {
   office: OfficeLike;
   /** Agente do demo (Office.demoAgent): esses só existem no snapshot. */
@@ -82,6 +99,8 @@ export interface MessageRegistryOptions {
   demoDeliver?: (agentId: string, text: string) => boolean;
   /** Mensagens aos agentes do Codex; ausente = eles não recebem. */
   codex?: CodexDeliveryOptions;
+  /** Mensagens aos agentes do Cursor; ausente = eles não recebem. */
+  cursor?: CursorDeliveryOptions;
   now?: () => number;
   /** Intervalo do relógio interno (start). */
   tickMs?: number;
@@ -105,6 +124,14 @@ export interface CodexBridgeMessage {
   text: string;
 }
 
+/** Mensagem entregue ao auxiliar do Cursor no host (POST /api/cursor/bridge/poll). */
+export interface CursorBridgeMessage {
+  id: string;
+  chatId: string;
+  cwd: string;
+  text: string;
+}
+
 /** Erro de validação do corpo (vira 400). */
 export class InvalidRequest extends Error {}
 
@@ -123,6 +150,8 @@ interface Entry {
   demo?: boolean;
   /** Mensagem a um agente do Codex: sai pelo entregador do Codex ('node' = o servidor rodou; 'bridge' = o auxiliar). */
   codex?: true;
+  /** Mensagem a um agente do Cursor: sai pelo entregador do Cursor. */
+  cursor?: true;
   via?: 'node' | 'bridge';
   /** Falhou por falta de confirmação: uma confirmação atrasada ainda corrige a situação. */
   late?: boolean;
@@ -150,10 +179,13 @@ const isFinal = (e: Entry) => e.msg.status === 'delivered' || e.msg.status === '
  * no Codex, há entregador).
  */
 function unavailableReason(a: AgentInfo, reachable: boolean): string | undefined {
-  if (a.provider === 'cursor') return tr('agentes do Cursor não recebem mensagens pelo escritório: fale com o agente que o chamou');
   if (a.kind !== 'main') return tr('subagentes não recebem mensagens: mande para o agente principal');
   if (!present(a)) return tr('o agente já saiu do escritório');
-  if (!reachable) return a.provider === 'codex' ? ERR_CODEX_UNAVAILABLE : tr('a sessão não está com o plugin habblaud-mensagens conectado (npm run mod:install)');
+  if (!reachable) {
+    if (a.provider === 'codex') return ERR_CODEX_UNAVAILABLE;
+    if (a.provider === 'cursor') return ERR_CURSOR_UNAVAILABLE;
+    return tr('a sessão não está com o plugin habblaud-mensagens conectado (npm run mod:install)');
+  }
   return undefined;
 }
 
@@ -187,6 +219,8 @@ export class MessageRegistry {
   private seen = new Map<string, number>();
   /** Última vez que o auxiliar do Codex no host buscou mensagens. */
   private bridgeAt?: number;
+  /** Última vez que o auxiliar do Cursor no host buscou mensagens. */
+  private cursorBridgeAt?: number;
   private timer: ReturnType<typeof setInterval> | null = null;
   private seq = 0;
   private readonly now: () => number;
@@ -235,13 +269,14 @@ export class MessageRegistry {
     const out = new Set<string>();
     for (const id of this.seen.keys()) if (this.canMessage(id)) out.add(id);
     if (this.codexAvailable()) for (const a of this.opts.office.list()) if (a.provider === 'codex' && a.kind === 'main' && present(a)) out.add(a.id);
+    if (this.cursorAvailable()) for (const a of this.opts.office.list()) if (a.provider === 'cursor' && a.kind === 'main' && present(a)) out.add(a.id);
     return out;
   }
 
   canMessage(agentId: string): boolean {
     const a = this.opts.office.get(agentId);
     if (a?.provider === 'codex') return this.codexAvailable() && present(a) && a.kind === 'main';
-    if (a?.provider === 'cursor') return false;
+    if (a?.provider === 'cursor') return this.cursorAvailable() && present(a) && a.kind === 'main';
     const at = this.seen.get(agentId);
     if (at === undefined || this.now() - at >= this.presenceMs) return false;
     return present(a) && a.kind === 'main';
@@ -251,6 +286,11 @@ export class MessageRegistry {
   codexAvailable(): boolean {
     const c = this.opts.codex;
     return !!c && (!!c.run || this.bridgeRecent());
+  }
+
+  cursorAvailable(): boolean {
+    const c = this.opts.cursor;
+    return !!c && (!!c.run || this.cursorBridgeRecent());
   }
 
   /**
@@ -275,9 +315,11 @@ export class MessageRegistry {
     const entry: Entry = { msg: { id, agentId, status: 'queued', createdAt: now, updatedAt: now }, text, activity: describeMessage(text), target: agent.sessionId };
     if (demo) entry.demo = true;
     else if (real?.provider === 'codex') entry.codex = true;
+    else if (real?.provider === 'cursor') entry.cursor = true;
     this.messages.set(id, entry);
     const out = { ...entry.msg };
     if (entry.codex) this.pumpCodex();
+    if (entry.cursor) this.pumpCursor();
     return { message: out };
   }
 
@@ -311,7 +353,7 @@ export class MessageRegistry {
     const out: InboxMessage[] = [];
     for (const e of this.messages.values()) {
       if (out.length >= INBOX_BATCH) break;
-      if (e.demo || e.codex || e.msg.agentId !== agent.id || e.msg.status !== 'queued' || e.target !== session) continue;
+      if (e.demo || e.codex || e.cursor || e.msg.agentId !== agent.id || e.msg.status !== 'queued' || e.target !== session) continue;
       this.setStatus(e, 'sent', now);
       e.session = session;
       e.sentAt = now;
@@ -332,7 +374,7 @@ export class MessageRegistry {
     const now = this.now();
     for (const x of ackResults(r)) {
       const e = this.messages.get(x.id);
-      if (!e || e.demo || e.codex || e.session !== session) continue;
+      if (!e || e.demo || e.codex || e.cursor || e.session !== session) continue;
       if (e.msg.status !== 'sent' && !(e.msg.status === 'failed' && e.late)) continue;
       if (x.ok) this.finish(e, 'delivered', now);
       else this.fail(e, now, x.error ?? ERR_REFUSED);
@@ -389,6 +431,48 @@ export class MessageRegistry {
     }
   }
 
+  /** Rodada do auxiliar do Cursor no host (mesma ideia do Codex). */
+  cursorPoll(raw: unknown): CursorBridgeMessage[] {
+    if (!rec(raw)) throw new InvalidRequest(tr('esperado um objeto JSON ({})'));
+    const c = this.opts.cursor;
+    if (!c) return [];
+    const now = this.now();
+    const was = this.cursorAvailable();
+    this.cursorBridgeAt = now;
+    if (!was) this.opts.office.markDirty();
+    if (c.run) return [];
+
+    const busy = new Set<string>();
+    for (const e of this.messages.values()) if (e.cursor && e.msg.status === 'sent') busy.add(e.msg.agentId);
+    const out: CursorBridgeMessage[] = [];
+    for (const e of this.messages.values()) {
+      if (out.length >= INBOX_BATCH) break;
+      if (!e.cursor || e.msg.status !== 'queued' || busy.has(e.msg.agentId)) continue;
+      busy.add(e.msg.agentId);
+      const target = this.cursorTarget(e, now);
+      if (!target) continue;
+      this.setStatus(e, 'sent', now);
+      e.sentAt = now;
+      e.via = 'bridge';
+      out.push({ id: e.msg.id, chatId: target.chatId, cwd: target.cwd, text: e.text });
+    }
+    return out;
+  }
+
+  cursorAck(raw: unknown): void {
+    const r = rec(raw);
+    if (!r || !Array.isArray(r.results)) throw new InvalidRequest('esperado {results: [{id, ok, error?}]}');
+    const now = this.now();
+    this.cursorBridgeAt = now;
+    for (const x of ackResults(r)) {
+      const e = this.messages.get(x.id);
+      if (!e || !e.cursor || e.via !== 'bridge') continue;
+      if (e.msg.status !== 'sent' && !(e.msg.status === 'failed' && e.late)) continue;
+      if (x.ok) this.finish(e, 'delivered', now);
+      else this.fail(e, now, x.error ?? ERR_CURSOR_REFUSED);
+    }
+  }
+
   /** Relógio: prazos, agente que saiu, entrega fictícia do demo, presença que venceu e limpeza das resolvidas. */
   tick(): void {
     const now = this.now();
@@ -409,9 +493,11 @@ export class MessageRegistry {
       if (!present(a)) this.fail(e, now, ERR_GONE);
       else if (e.msg.status === 'queued' && a.sessionId !== e.target) this.fail(e, now, ERR_SESSION_CHANGED);
       else if (e.msg.status === 'queued' && now - e.msg.createdAt >= this.queuedTimeoutMs) {
-        this.fail(e, now, !e.codex ? ERR_NOT_FETCHED : this.opts.codex?.run ? ERR_CODEX_SLOW : ERR_CODEX_NOT_FETCHED);
+        if (e.cursor) this.fail(e, now, this.opts.cursor?.run ? ERR_CURSOR_SLOW : ERR_CURSOR_NOT_FETCHED);
+        else if (e.codex) this.fail(e, now, this.opts.codex?.run ? ERR_CODEX_SLOW : ERR_CODEX_NOT_FETCHED);
+        else this.fail(e, now, ERR_NOT_FETCHED);
       } else if (e.msg.status === 'sent' && now - (e.sentAt ?? now) >= this.sentTimeoutMs) {
-        this.fail(e, now, e.codex ? ERR_CODEX_NOT_CONFIRMED : ERR_NOT_CONFIRMED);
+        this.fail(e, now, e.cursor ? ERR_CURSOR_NOT_CONFIRMED : e.codex ? ERR_CODEX_NOT_CONFIRMED : ERR_NOT_CONFIRMED);
         e.late = true;
       }
     }
@@ -423,16 +509,24 @@ export class MessageRegistry {
     }
     if (this.bridgeAt !== undefined && now - this.bridgeAt >= this.presenceMs) {
       this.bridgeAt = undefined;
-      // Sem o binário no modo Node, os agentes do Codex deixam de receber.
       if (!this.opts.codex?.run) this.opts.office.markDirty();
     }
+    if (this.cursorBridgeAt !== undefined && now - this.cursorBridgeAt >= this.presenceMs) {
+      this.cursorBridgeAt = undefined;
+      if (!this.opts.cursor?.run) this.opts.office.markDirty();
+    }
     this.pumpCodex();
+    this.pumpCursor();
   }
 
   // ---------------------------------------------------------------- internos
 
   private bridgeRecent(): boolean {
     return this.bridgeAt !== undefined && this.now() - this.bridgeAt < this.presenceMs;
+  }
+
+  private cursorBridgeRecent(): boolean {
+    return this.cursorBridgeAt !== undefined && this.now() - this.cursorBridgeAt < this.presenceMs;
   }
 
   /** Thread e pasta da conta de uma mensagem ao Codex; sem elas, a mensagem falha (e devolve undefined). */
@@ -478,6 +572,46 @@ export class MessageRegistry {
     if (r.ok) this.finish(e, 'delivered', now);
     else this.fail(e, now, truncate(r.error, ERROR_MAX) || ERR_CODEX_REFUSED);
     this.pumpCodex();
+  }
+
+  private cursorTarget(e: Entry, now: number): { chatId: string; cwd: string } | undefined {
+    const a = this.opts.office.get(e.msg.agentId);
+    if (!present(a)) return void this.fail(e, now, ERR_GONE);
+    if (a.sessionId !== e.target) return void this.fail(e, now, ERR_SESSION_CHANGED);
+    const chatId = a.sessionId;
+    const cwd = a.roomId;
+    if (!chatId || !cwd) return void this.fail(e, now, ERR_CURSOR_CWD);
+    return { chatId, cwd };
+  }
+
+  private pumpCursor(): void {
+    const run = this.opts.cursor?.run;
+    if (!run) return;
+    const busy = new Set<string>();
+    for (const e of this.messages.values()) if (e.cursor && e.msg.status === 'sent') busy.add(e.msg.agentId);
+    const now = this.now();
+    for (const e of this.messages.values()) {
+      if (!e.cursor || e.msg.status !== 'queued' || busy.has(e.msg.agentId)) continue;
+      busy.add(e.msg.agentId);
+      const target = this.cursorTarget(e, now);
+      if (!target) continue;
+      this.setStatus(e, 'sent', now);
+      e.sentAt = now;
+      e.via = 'node';
+      run({ chatId: target.chatId, cwd: target.cwd, text: e.text }).then(
+        (r) => this.cursorDone(e, r),
+        (err: unknown) => this.cursorDone(e, { ok: false, error: errMsg(err) }),
+      );
+    }
+  }
+
+  private cursorDone(e: Entry, r: CursorAgentResult): void {
+    if (this.messages.get(e.msg.id) !== e) return;
+    if (e.msg.status !== 'sent' && !(e.msg.status === 'failed' && e.late)) return;
+    const now = this.now();
+    if (r.ok) this.finish(e, 'delivered', now);
+    else this.fail(e, now, truncate(r.error, ERROR_MAX) || ERR_CURSOR_REFUSED);
+    this.pumpCursor();
   }
 
   private setStatus(e: Entry, status: OutboxMessage['status'], now: number): void {

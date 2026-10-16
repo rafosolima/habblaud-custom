@@ -47,6 +47,9 @@ export function expiryText(expiresAt: number, now: number, seconds = false): str
 /** Aviso do cartão de um pedido do Codex. */
 export const CODEX_PERMISSION_NOTE = tr('No Codex, a aprovação só aparece no terminal depois que você responder aqui ou o prazo acabar.');
 
+/** Aviso do cartão de um pedido do Cursor (hook antes da ferramenta rodar). */
+export const CURSOR_PERMISSION_NOTE = tr('No Cursor, este pedido veio do hook do Habblaud: se você não responder aqui a tempo, vale a aprovação normal do IDE.');
+
 /** O que o cartão oferece para um pedido (muda com a ferramenta). */
 export interface PermissionOptions {
   /** "Aprovar e não perguntar de novo" (as sugestões do Claude Code). */
@@ -62,6 +65,7 @@ export interface PermissionOptions {
 }
 
 export function permissionOptions(p: Pick<PermissionRequestInfo, 'provider' | 'suggestions'>, agent: Pick<AgentInfo, 'kind' | 'background'>): PermissionOptions {
+  if (p.provider === 'cursor') return { always: false, interrupt: false, reasonRequired: false, seconds: false, note: CURSOR_PERMISSION_NOTE };
   if (p.provider === 'codex') return { always: false, interrupt: false, reasonRequired: true, seconds: true, note: CODEX_PERMISSION_NOTE };
   // Subagente em segundo plano: o Claude Code só mostra o diálogo depois que o hook responde.
   const blocking = agent.kind === 'sub' && !!agent.background;
@@ -98,7 +102,7 @@ export const isLocalHostname = isLoopbackHostname;
 
 /** Pedido que se responde escolhendo (as perguntas do AskUserQuestion), não aprovando. O Codex nunca pergunta. */
 export function isQuestionRequest(p: Pick<PermissionRequestInfo, 'tool' | 'questions' | 'provider'> | undefined): boolean {
-  return !!p && p.provider !== 'codex' && p.tool === ASK_TOOL && !!p.questions?.length;
+  return !!p && p.provider !== 'codex' && p.provider !== 'cursor' && p.tool === ASK_TOOL && !!p.questions?.length;
 }
 
 /** O que está marcado numa pergunta do cartão: as opções (posições do original) e o "Outro" (marcado, e o texto). */
@@ -327,7 +331,8 @@ export class PermissionCard {
     const now = this.ctx.now();
     const opts = (this.opts = permissionOptions(p, agent));
     const codex = p.provider === 'codex';
-    this.el.classList.toggle('is-codex', codex);
+    const cursor = p.provider === 'cursor';
+    this.el.classList.toggle('is-codex', codex || cursor);
     const ask = isQuestionRequest(p);
     const kind = ask ? 'ask' : 'perm';
     if (this.el.dataset.kind !== kind) {
@@ -343,7 +348,9 @@ export class PermissionCard {
       this.timer,
       codex
         ? tr('Pedido feito às {0}. Sem resposta aqui até {1}, o Codex segue sem a decisão do escritório e pede a aprovação no terminal.', [formatClock(p.createdAt), formatClock(p.expiresAt)])
-        : tr('Pedido feito às {0}. Sem resposta aqui até {1}, o Habblaud devolve o pedido ao terminal.', [formatClock(p.createdAt), formatClock(p.expiresAt)]),
+        : cursor
+          ? tr('Pedido feito às {0}. Sem resposta aqui até {1}, o hook solta e vale a aprovação normal do Cursor.', [formatClock(p.createdAt), formatClock(p.expiresAt)])
+          : tr('Pedido feito às {0}. Sem resposta aqui até {1}, o Habblaud devolve o pedido ao terminal.', [formatClock(p.createdAt), formatClock(p.expiresAt)]),
     );
 
     // Pergunta: o formulário com as opções no lugar do título da ferramenta e da prévia dos argumentos.
@@ -379,10 +386,14 @@ export class PermissionCard {
     for (const b of [this.approveBtn, this.denyBtn, this.terminalBtn]) b.disabled = busy;
     for (const el of this.askForm.querySelectorAll('input')) el.disabled = busy;
     if (ask) this.syncAnswer();
-    setTitle(this.denyBtn, ask ? tr('Não responder: o agente segue sem a resposta (com o motivo, se você escrever um)') : codex ? tr('Recusar com um motivo (o Codex pede um)') : '');
+    setTitle(this.denyBtn, ask ? tr('Não responder: o agente segue sem a resposta (com o motivo, se você escrever um)') : codex ? tr('Recusar com um motivo (o Codex pede um)') : cursor ? tr('Recusar (opcionalmente com motivo para o agente)') : '');
     setTitle(
       this.terminalBtn,
-      codex ? tr('O Habblaud solta o pedido agora: o Codex mostra a aprovação no terminal') : tr('O Habblaud deixa este pedido de lado: vale o que você responder no terminal'),
+      codex
+        ? tr('O Habblaud solta o pedido agora: o Codex mostra a aprovação no terminal')
+        : cursor
+          ? tr('O Habblaud solta o pedido agora: o Cursor segue com a aprovação normal do IDE')
+          : tr('O Habblaud deixa este pedido de lado: vale o que você responder no terminal'),
     );
     this.suggestions.sync(opts.always ? (p.suggestions ?? []) : []);
     for (const b of this.suggestions.container.querySelectorAll('button')) b.disabled = busy;

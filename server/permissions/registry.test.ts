@@ -501,6 +501,49 @@ describe('peças puras', () => {
     expect(callSignature('mcp__x__y', { a: 'z' })).not.toBe(callSignature('mcp__x__y', { a: 'w' }));
   });
 
+  it('Cursor: publica no agente principal com provider cursor e status waiting', () => {
+    const chatId = '4318492d-f6be-4aa1-9ab5-e78611afc74f';
+    const CUR = `cursor:${chatId}`;
+    let now = 1_000_000;
+    const clock = { now: () => now, advance: (ms: number) => (now += ms) };
+    let permissions: PermissionRegistry | undefined;
+    const office = new Office({
+      names: new NameStore(null),
+      version: 't',
+      startedAt: 0,
+      accounts: () => [],
+      sources: () => [],
+      accountName: () => undefined,
+      permissions: () => permissions?.snapshot() ?? new Map(),
+      now: clock.now,
+    });
+    office.addMain({
+      id: CUR,
+      provider: 'cursor',
+      account: '.cursor',
+      sessionId: chatId,
+      cwd: '/p/habblaud',
+      role: 'Agente principal (Cursor)',
+      startedAt: 0,
+      status: 'working',
+    });
+    permissions = new PermissionRegistry({ office, viewers: () => 1, now: clock.now });
+    const r = permissions.register({
+      provider: 'cursor',
+      session_id: chatId,
+      tool_name: 'Shell',
+      tool_input: { command: 'npm test' },
+      timeout_ms: 60_000,
+    });
+    expect('skip' in r).toBe(false);
+    if ('skip' in r) return;
+    const a = snapAgent(office, CUR)!;
+    expect(a.status).toBe('waiting');
+    expect(a.permission).toMatchObject({ provider: 'cursor', tool: 'Shell' });
+    expect(permissions.decide(r.id, { behavior: 'allow' })).toBe('ok');
+    expect(snapAgent(office, CUR)?.status).not.toBe('waiting');
+  });
+
   it('scanToolCall: chamada mais recente sem resultado; com o id, só confere o resultado', () => {
     const tmp = tempDir();
     try {
