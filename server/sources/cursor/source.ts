@@ -546,7 +546,7 @@ export class CursorSource implements AgentSource {
         this.applyChat(t, parseIdeTranscriptLine(t.state, line, { idPrefix: t.agentId, now: this.now() }), live);
       }
       if (res.lines.length) this.applyChatSummary(t);
-      if (!res.more) break;
+      if (!res.lines.length) break;
     }
   }
 
@@ -561,18 +561,25 @@ export class CursorSource implements AgentSource {
     for (const a of res.activities) this.opts.office.addActivity(t.agentId, a.activity, a.current, { feed: true });
   }
 
+  /** Chat IDE aberto: após `turn_ended`, só o transcript recente conta (meta.json pode ficar “quente” por meia hora). */
+  private chatOpen(t: ChatTracker, meta: CursorChatMeta, now: number, transcriptMtime?: number): boolean {
+    const activity = transcriptMtime ?? t.lastWriteAt;
+    const transcriptFresh = isTranscriptPresent(activity, now);
+    if (t.kind === 'sub') {
+      return !!(t.parentAgentId && this.opts.office.has(t.parentAgentId) && transcriptFresh);
+    }
+    if (t.state.resulted) return isTranscriptPresent(activity, now, CURSOR_WORKING_MS);
+    return isCursorPresent(meta, now) || transcriptFresh;
+  }
+
   private syncChat(t: ChatTracker, meta: CursorChatMeta, now: number, transcriptMtime?: number): void {
     const office = this.opts.office;
     if (t.inOffice && !office.has(t.agentId)) t.inOffice = false;
-    const open =
-      t.kind === 'main'
-        ? isCursorPresent(meta, now)
-        : t.parentAgentId
-          ? office.has(t.parentAgentId) && isTranscriptPresent(transcriptMtime ?? t.lastWriteAt, now)
-          : false;
+    if (!t.state.resulted && t.delivered) t.delivered = false;
+    const open = this.chatOpen(t, meta, now, transcriptMtime);
     if (!t.inOffice && !t.left) {
       if (!t.state.started) return;
-      if (!open && !t.state.resulted) {
+      if (!open) {
         t.left = true;
         return;
       }
@@ -604,7 +611,13 @@ export class CursorSource implements AgentSource {
   private enterChat(t: ChatTracker, meta: CursorChatMeta, now: number): void {
     const office = this.opts.office;
     const account = this.entry?.id ?? CURSOR_ACCOUNT;
-    const hint = resolveCursorIdentityHint({ storeName: t.sessionName, title: meta.title, team: this.opts.team });
+    const hint = resolveCursorIdentityHint({
+      storeName: t.sessionName,
+      title: meta.title,
+      team: this.opts.team,
+      trustStoreName: false,
+      trustTitle: false,
+    });
     const identity = identityFromHint(hint);
     office.addMain({
       id: t.agentId,
@@ -698,7 +711,7 @@ export class CursorSource implements AgentSource {
       if (res.reset) r.state = createCursorState();
       for (const line of res.lines) this.apply(r, parseCursorLine(r.state, line, { idPrefix: r.key, now: this.now() }), live);
       if (res.lines.length) this.applySummary(r);
-      if (!res.more) break;
+      if (!res.lines.length) break;
     }
   }
 

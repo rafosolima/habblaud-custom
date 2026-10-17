@@ -10,6 +10,7 @@ import { Office } from '../../model/office';
 import type { TeamLookup, TeamMember } from '../../model/team';
 import { C, cursorDir, SESSION } from '../../test/cursor-fixtures';
 import { SourceSet } from '../source';
+import { CURSOR_WORKING_MS } from './files';
 import { CursorSource, ENTER_AFTER_MS, STALE_MS } from './source';
 
 setQuiet(true);
@@ -332,6 +333,37 @@ describe('fonte do Cursor: chats do IDE / cursor-agent', () => {
     ctx.source.boot();
     ctx.poll();
     expect(ctx.agent(`cursor:${chatId}`)).toMatchObject({ name: 'Lucas (Dev - Mestre)', provider: 'cursor' });
+  });
+
+  it('chat encerrado (turn_ended e transcript parado) não entra nem mantém sessão aberta', () => {
+    const tmp = cursorDir();
+    cleanups.push(tmp.cleanup);
+    const home = join(tmp.dir, 'home');
+    const chatRoot = join(home, '.cursor');
+    const chatId = 'ended-chat';
+    const cwd = '/home/x/habblaud';
+    const chatDir = join(chatRoot, 'chats', 'p', chatId);
+    mkdirSync(chatDir, { recursive: true });
+    const ctx = setup({ chatRoots: [chatRoot], home });
+    const now = ctx.now();
+    const metaAt = now - 10 * 60_000;
+    writeFileSync(join(chatDir, 'meta.json'), JSON.stringify({ updatedAtMs: metaAt, cwd, title: 'Tarefa', hasConversation: true }));
+    const slug = 'home-x-habblaud';
+    const transcript = join(chatRoot, 'projects', slug, 'agent-transcripts', chatId, `${chatId}.jsonl`);
+    mkdirSync(join(transcript, '..'), { recursive: true });
+    writeFileSync(
+      transcript,
+      [
+        JSON.stringify({ role: 'user', message: { content: [{ type: 'text', text: '<user_query>\nOi\n</user_query>' }] } }),
+        JSON.stringify({ type: 'turn_ended', status: 'success' }),
+      ].join('\n') + '\n',
+    );
+    const { utimesSync } = require('node:fs') as typeof import('node:fs');
+    const stale = (now - CURSOR_WORKING_MS - 60_000) / 1000;
+    utimesSync(transcript, stale, stale);
+    ctx.source.boot();
+    ctx.poll();
+    expect(ctx.agent(`cursor:${chatId}`)).toBeUndefined();
   });
 
   it('subagente no transcript do pai entra ligado ao principal Cursor', () => {

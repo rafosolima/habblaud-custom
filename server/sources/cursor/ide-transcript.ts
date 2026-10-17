@@ -84,6 +84,10 @@ export function parseIdeTranscriptLine(s: CursorState, raw: string, ctx: CursorP
   if (role === 'user' || type === 'user') {
     const text = userText(o);
     touch();
+    if (s.resulted) {
+      s.resulted = false;
+      s.resultError = false;
+    }
     if (!s.started) {
       s.started = true;
       out.signals.push({ type: 'start' });

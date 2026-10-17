@@ -25,4 +25,10 @@ describe('cursor identity', () => {
       name: 'Lucas',
     });
   });
+
+  it('título do chat no store.db do IDE não vira persona; cai no cursorIdeDefault', () => {
+    expect(
+      resolveCursorIdentityHint({ storeName: 'Cursor Agent Issue', title: 'Cursor Agent Issue', team, trustStoreName: false }),
+    ).toMatchObject({ name: 'Renato', role: 'TechLead', agentType: 'renato-techlead' });
+  });
 });

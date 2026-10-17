@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+// @ts-expect-error -- o hook é JS puro (mod/), sem declaração de tipos
 import { cursorOutput, permissionBody, readConfig, run, toolFromEvent } from '../../mod/habblaud-cursor-permissoes/hook.mjs';
 
 describe('cursor permission hook', () => {

@@ -21,6 +21,10 @@ export interface CursorIdentityInput {
   role?: string;
   team?: TeamLookup;
   env?: NodeJS.ProcessEnv;
+  /** IDE: só usa `storeName` se casar com `cursorName` no team.json; wrapper (--name) deixa true (padrão). */
+  trustStoreName?: boolean;
+  /** IDE: idem para `title` do meta.json (título da tarefa, não nome do dev). */
+  trustTitle?: boolean;
 }
 
 export interface CursorIdentityHint {
@@ -47,18 +51,20 @@ export function resolveCursorIdentityHint(input: CursorIdentityInput & { agentTy
     const m = team?.subagent(input.agentType.trim());
     if (m) return memberHint(m, input.agentType.trim());
   }
-  const tryName = (raw: string | undefined): CursorIdentityHint | undefined => {
+  const trustUnknownStore = input.trustStoreName !== false;
+  const tryName = (raw: string | undefined, fromStoreDb = false): CursorIdentityHint | undefined => {
     if (!raw?.trim()) return undefined;
     const n = raw.trim();
     const byCursor = team?.cursor(n);
     if (byCursor) return memberHint(byCursor, n);
     const byType = team?.subagent(n);
     if (byType) return memberHint(byType, n);
+    if (fromStoreDb && !trustUnknownStore) return undefined;
     if (!isGenericCursorAgentName(n)) return { cursorName: n, name: n, ...(input.role ? { role: input.role } : {}) };
     return undefined;
   };
 
-  const fromStore = tryName(input.storeName);
+  const fromStore = tryName(input.storeName, true);
   if (fromStore) return fromStore;
 
   const envName = env.HABBLAUD_CURSOR_IDE_NAME?.trim() || env.HABBLAUD_CURSOR_NAME?.trim();
@@ -68,7 +74,7 @@ export function resolveCursorIdentityHint(input: CursorIdentityInput & { agentTy
   const ideDefault = team?.cursorIdeDefault?.();
   if (ideDefault) return memberHint(ideDefault, ideDefault.cursorName ?? ideDefault.name);
 
-  const fromTitle = tryName(input.title);
+  const fromTitle = input.trustTitle === false ? tryName(input.title, true) : tryName(input.title);
   if (fromTitle) return fromTitle;
 
   return undefined;

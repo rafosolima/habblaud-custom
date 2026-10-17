@@ -667,7 +667,7 @@ class AgentView {
     setHidden(this.codexHint, !codex || a.kind !== 'main' || !live || this.ctx.store.replaying);
     const showCursorHint = provider === 'cursor' && live && !this.ctx.store.replaying;
     setHidden(this.cursorHint, !showCursorHint);
-    if (showCursorHint) setText(this.cursorHint, cursorDrawerHint(agent.canMessage));
+    if (showCursorHint) setText(this.cursorHint, cursorDrawerHint(a.canMessage));
   }
 
   /** Lista as perguntas pendentes com as opções, só para leitura (sem o pedido no escritório, a resposta é no Claude Code). */
