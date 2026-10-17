@@ -12,7 +12,7 @@ import type { UiContext } from './context';
 import { h, KeyedList, setAttr, setHidden, setStyleVar, setText, setTitle, setVariant } from './dom';
 import { relativeTime, usageLevel, usageWindowMs, usageWindowView, type UsageWindowView } from './format';
 import { ICONS } from './icons';
-import { isCodex, isCursor } from './provider';
+import { isCodex, isCursor, isGemini } from './provider';
 import { usageRowFits } from './usage-row';
 import { createAccountChip, createProviderTag, updateAccountChip, updateProviderTag } from './widgets';
 import { tr } from '../../../shared/i18n';
@@ -176,12 +176,17 @@ export function showsUsageAge(a: Pick<AccountInfo, 'usage' | 'usageStatus' | 'pr
 }
 
 /** Linha embaixo do nome: e-mail; no Codex (sem e-mail), o plano; nas outras, a pasta. */
-export function usageSubtitle(a: Pick<AccountInfo, 'email' | 'plan' | 'configDir' | 'provider' | 'sessions'>): string {
+export function usageSubtitle(a: Pick<AccountInfo, 'email' | 'plan' | 'configDir' | 'provider'> & Partial<Pick<AccountInfo, 'sessions'>>): string {
   if (isCursor(a)) {
     if (a.email) return a.email;
     return a.sessions
       ? tr('{0} sessão(ões) Cursor no escritório', [a.sessions])
       : tr('Cursor IDE · nenhuma sessão aberta');
+  }
+  if (isGemini(a)) {
+    return a.sessions
+      ? tr('{0} sessão(ões) Gemini no escritório', [a.sessions])
+      : tr('Gemini CLI · nenhuma sessão aberta');
   }
   if (a.email) return a.email;
   if (isCodex(a)) return a.plan ? tr('plano {0}', [a.plan]) : 'Codex';
@@ -230,6 +235,7 @@ export class UsageCards {
       const sb = b.sessions ?? 0;
       if (sa !== sb) return sb - sa;
       if (isCursor(a) !== isCursor(b)) return isCursor(a) ? -1 : 1;
+      if (isGemini(a) !== isGemini(b)) return isGemini(a) ? -1 : 1;
       return a.name.localeCompare(b.name);
     });
     this.list.sync(accounts);
@@ -354,7 +360,7 @@ export class UsageCards {
     updateAccountChip(r.chip, a);
     setStyleVar(card, '--acc', a.color);
     setText(r.name, a.name);
-    updateProviderTag(r.prov, cursor ? 'cursor' : codex ? 'codex' : 'claude', a.name);
+    updateProviderTag(r.prov, cursor ? 'cursor' : isGemini(a) ? 'gemini' : codex ? 'codex' : 'claude', a.name);
     setText(r.email, usageSubtitle(a));
     setAttr(
       card,

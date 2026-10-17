@@ -40,6 +40,8 @@ import { CodexHistory } from './sources/codex/history';
 import { CodexSource } from './sources/codex/source';
 import { discoverCursorRoots } from './sources/cursor/files';
 import { CursorSource } from './sources/cursor/source';
+import { discoverGeminiHomes } from './sources/gemini/accounts';
+import { GeminiSource } from './sources/gemini/source';
 import { TeamRoster } from './model/team';
 import { createBuildReader, readBuildInfo } from './build';
 import { UpdateChecker } from './updates/checker';
@@ -150,6 +152,9 @@ const cursor = config.cursor
   ? new CursorSource({ accounts, office, dir: config.cursorDir, chatRoots: cursorChatRoots, home: config.home, inDocker: config.inDocker, team })
   : undefined;
 if (cursor) agents.add(cursor);
+const geminiHomes = config.gemini ? discoverGeminiHomes(process.env, config.home) : [];
+const gemini = config.gemini && geminiHomes.length ? new GeminiSource({ accounts, office, homes: geminiHomes, home: config.home }) : undefined;
+if (gemini) agents.add(gemini);
 // Eventos dos hooks do Codex (POST /api/codex/events, mod/habblaud-codex/hook.mjs): vão para a fonte do Codex ao vivo
 // (CodexLive); sem ela (nenhuma pasta do Codex ou HABBLAUD_CODEX=0) a rota responde {ok: false}.
 const codexLive: CodexLive | undefined = codex;
@@ -515,6 +520,18 @@ server.listen(config.port, config.host, () => {
     );
   } else {
     log.info(tr('   Cursor: desligado (HABBLAUD_CURSOR=0).'));
+  }
+  if (gemini) {
+    const open = gemini.sources().reduce((n, s) => n + s.sessions, 0);
+    log.info(tr('   Gemini: {0} conta(s), {1} sessão(ões) aberta(s).', [gemini.accountEntries().length, open]));
+  } else {
+    log.info(
+      tr('   Gemini: {0}.', [
+        !config.gemini
+          ? tr('desligado (HABBLAUD_GEMINI=0)')
+          : tr('nenhuma pasta GEMINI_HOME encontrada (instale o Gemini CLI ou defina HABBLAUD_GEMINI_DIRS)'),
+      ]),
+    );
   }
   const members = team.list().length;
   if (members) log.info(tr('   Equipe: {0} pessoa(s) em {1}.', [members, config.teamFile]));

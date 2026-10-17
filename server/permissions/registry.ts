@@ -169,12 +169,12 @@ function isIndex(v: unknown): v is number {
 
 /** Pedido que se responde com `answer` (as perguntas do AskUserQuestion; o Codex não as manda pelo hook). */
 function isQuestion(info: { tool: string; provider?: string }): boolean {
-  return info.tool === ASK_TOOL && info.provider !== 'codex' && info.provider !== 'cursor';
+  return info.tool === ASK_TOOL && info.provider !== 'codex' && info.provider !== 'cursor' && info.provider !== 'gemini';
 }
 
 /** Codex e Cursor não aceitam interromper nem "sempre permitir" pelo hook. */
 function unsupportedByRestrictedProvider(info: PermissionRequestInfo, d: PermissionDecision): boolean {
-  return (info.provider === 'codex' || info.provider === 'cursor') && (d.interrupt === true || d.suggestion !== undefined);
+  return (info.provider === 'codex' || info.provider === 'cursor' || info.provider === 'gemini') && (d.interrupt === true || d.suggestion !== undefined);
 }
 
 /**
@@ -595,7 +595,7 @@ export class PermissionRegistry {
   }
 
   /** Agente principal do Cursor IDE (sessionId = conversation_id / chatId). */
-  private resolveCursorAgent(chatId: string): { id: string } | undefined {
+  private resolveCursorAgent(chatId: string): { id: string; subagent?: string } | undefined {
     const office = this.opts.office;
     const direct = office.get(`cursor:${chatId}`);
     if (present(direct) && direct.provider === 'cursor' && direct.kind === 'main') return { id: direct.id };

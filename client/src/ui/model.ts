@@ -323,7 +323,13 @@ export interface RoomGroup {
 function accountText(account: AccountInfo | undefined): string {
   if (!account) return '';
   // A ferramenta entra na busca: "codex" acha os agentes do Codex.
-  return [account.short, account.name, account.email ?? '', account.id, account.provider === 'codex' ? 'Codex' : account.provider === 'cursor' ? 'Cursor' : ''].join(' ');
+  return [
+    account.short,
+    account.name,
+    account.email ?? '',
+    account.id,
+    account.provider === 'codex' ? 'Codex' : account.provider === 'cursor' ? 'Cursor' : account.provider === 'gemini' ? 'Gemini' : '',
+  ].join(' ');
 }
 
 /** Verdadeiro se o agente bate com a busca textual (sem acentos, sem diferenciar maiúsculas). */

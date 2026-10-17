@@ -9,6 +9,7 @@
 #     /codex/<conta>/... (nunca auth.json, config.toml, history.jsonl, logs nem os bancos SQLite);
 #   - do Cursor, SOMENTE ~/.habblaud/cursor/sessions em /cursor/sessions (wrapper), ~/.cursor/chats e ~/.cursor/projects
 #     em /home/node/.cursor/… (IDE / cursor-agent e subagentes), e, se existir, ~/.habblaud/team.json em /team/team.json;
+#   - do Gemini CLI, SOMENTE ~/.gemini/tmp em /home/node/.gemini/tmp (sessões session-*.jsonl);
 #   - HABBLAUD_CLAUDE_DIRS, HABBLAUD_CODEX_DIRS, HABBLAUD_ACCOUNTS, HABBLAUD_USAGE_DIR, HABBLAUD_CURSOR_DIR e
 #     HABBLAUD_TEAM_FILE.
 # O Compose mescla o override automaticamente em qualquer `docker compose ...` rodado nesta pasta.

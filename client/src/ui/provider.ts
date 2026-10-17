@@ -8,7 +8,7 @@ import { shortcutHint } from './model';
 import { tr } from '../../../shared/i18n';
 
 /** Nome de cada ferramenta como aparece nos textos. */
-export const PROVIDER_NAME: Record<Provider, string> = { claude: 'Claude Code', codex: 'Codex', cursor: 'Cursor' };
+export const PROVIDER_NAME: Record<Provider, string> = { claude: 'Claude Code', codex: 'Codex', cursor: 'Cursor', gemini: 'Gemini' };
 
 /** Ferramenta de um agente, conta, sessão ou pedido (ausente = Claude Code). */
 export function providerOf(x: { provider?: Provider } | null | undefined): Provider {
@@ -23,9 +23,17 @@ export function isCursor(x: { provider?: Provider } | null | undefined): boolean
   return x?.provider === 'cursor';
 }
 
+export function isGemini(x: { provider?: Provider } | null | undefined): boolean {
+  return x?.provider === 'gemini';
+}
+
 /** O id de conta tem cara da conta do Cursor (".cursor", "demo:.cursor")? Como looksLikeCodexId. */
 export function looksLikeCursorId(id: string): boolean {
   return /(?:^|[:/\\])\.?cursor(?:[-_.~]|$)/i.test(id);
+}
+
+export function looksLikeGeminiId(id: string): boolean {
+  return /(?:^|[:/\\])\.?gemini(?:[-_.~]|$)/i.test(id);
 }
 
 /**
@@ -39,7 +47,7 @@ export function looksLikeCodexId(id: string): boolean {
 /** Ferramenta da conta: a do snapshot; sem ela, a dica de quem chamou ou o jeito do id. */
 export function accountProvider(account: Pick<AccountInfo, 'provider'> | undefined, fallbackId = '', hint?: Provider): Provider {
   if (account) return providerOf(account);
-  return hint ?? (looksLikeCodexId(fallbackId) ? 'codex' : looksLikeCursorId(fallbackId) ? 'cursor' : 'claude');
+  return hint ?? (looksLikeCodexId(fallbackId) ? 'codex' : looksLikeCursorId(fallbackId) ? 'cursor' : looksLikeGeminiId(fallbackId) ? 'gemini' : 'claude');
 }
 
 /**
@@ -51,10 +59,10 @@ export function fallbackShort(id: string, provider: Provider = accountProvider(u
   const rest = id
     .replace(/^.*:/, '')
     .replace(/~\d+$/, '')
-    .replace(/^\.?(?:claude|codex|cursor)(?=[-_.]|$)[-_.]?/i, '');
+    .replace(/^\.?(?:claude|codex|cursor|gemini)(?=[-_.]|$)[-_.]?/i, '');
   const letter = /[\p{L}\p{N}]/u.exec(rest)?.[0];
   if (letter) return letter.toUpperCase();
-  return provider === 'codex' ? 'X' : provider === 'cursor' ? 'R' : '?';
+  return provider === 'codex' ? 'X' : provider === 'cursor' ? 'R' : provider === 'gemini' ? 'G' : '?';
 }
 
 /** O selo "Codex"/"Cursor" ao lado do nome da conta (não repete quando o nome já diz a ferramenta). */
@@ -76,8 +84,8 @@ export function accountChipLabel(account: Pick<AccountInfo, 'name' | 'email' | '
  */
 export function emptyOfficeHint(accounts: readonly Pick<AccountInfo, 'short' | 'provider'>[]): string {
   const keys = shortcutHint(accounts.filter((a) => !isCodex(a)));
-  if (!accounts.some(isCodex)) return tr('Abra o Claude Code em qualquer projeto{0} e veja seu agente chegar.', [keys ? ` (${keys})` : '']);
-  return tr('Abra o Claude Code{0} ou o Codex em qualquer projeto e veja seu agente chegar.', [keys ? ` (${keys})` : '']);
+  if (!accounts.some(isCodex) && !accounts.some(isGemini)) return tr('Abra o Claude Code em qualquer projeto{0} e veja seu agente chegar.', [keys ? ` (${keys})` : '']);
+  return tr('Abra o Claude Code{0}, o Codex ou o Gemini CLI em qualquer projeto e veja seu agente chegar.', [keys ? ` (${keys})` : '']);
 }
 
 /** Algum pedido de permissão do Codex esperando: o prazo é curto e o cartão conta os segundos (relógio de 1 s). */

@@ -357,6 +357,14 @@ do Codex levam `provider: 'codex'` (ausente = Claude Code). Ids: `<conta>:<threa
   `/ack` (mesma trava das mensagens). `canMessage` = há entregador (binário achado, ou auxiliar visto há até 10 s).
   Retorno 0 = entrou na fila da sessão (`delivered`); o Codex consome a fila a cada ~10 s, quando a sessão fica ociosa.
 
+## Gemini
+
+`sources/gemini/` (`GeminiSource`, `provider: 'gemini'`): observa o **Gemini CLI** em `GEMINI_HOME/tmp/<projectHash>/chats/session-*.jsonl`
+(padrão `~/.gemini`). Presença = arquivo modificado nos últimos 30 min; `working` = escrita nos últimos 90 s ou ferramentas
+em andamento no transcript. A sala vem de `directories[0]` na metadata da sessão. Subagentes (`kind: subagent`) ficam de fora.
+Sem mensagens nem permissões pelo escritório (por enquanto). `HABBLAUD_GEMINI=0` desliga; `HABBLAUD_GEMINI_DIRS` ou `GEMINI_HOME`
+escolhem a pasta.
+
 ## Cursor
 
 `sources/cursor/` (`CursorSource`, `provider: 'cursor'`):
@@ -542,6 +550,8 @@ em `shared/world/city.ts` (fonte da verdade; o servidor do mundo guarda a cópia
 | `HABBLAUD_CODEX` | ligado | `0` desliga a fonte do Codex |
 | `HABBLAUD_CODEX_DIRS` | — | pastas do Codex separadas por vírgula; substitui a detecção (`CODEX_HOME` e `~/.codex*`) |
 | `HABBLAUD_CODEX_BIN` | `codex` do PATH | binário do Codex para o `codex queue` (modo Node e `npm run codex:bridge`) |
+| `HABBLAUD_GEMINI` | ligado | `0` desliga a fonte do Gemini CLI |
+| `HABBLAUD_GEMINI_DIRS` | — | pastas `GEMINI_HOME` separadas por vírgula; substitui a detecção (`GEMINI_HOME` e `~/.gemini*`) |
 | `HABBLAUD_CURSOR` | ligado | `0` desliga a fonte do Cursor |
 | `HABBLAUD_CURSOR_DIR` | `~/.habblaud/cursor` (Docker: `/cursor`) | pasta do wrapper do Cursor (as execuções ficam em `sessions/`); o wrapper usa a mesma variável |
 | `HABBLAUD_CURSOR_BIN` | `cursor-agent` do PATH | (wrapper) o executável do Cursor CLI |

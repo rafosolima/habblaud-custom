@@ -37,7 +37,10 @@ export function updateProviderTag(tag: HTMLElement, provider: Provider, accountN
   setHidden(tag, !show);
   if (!show) return;
   setText(tag, PROVIDER_NAME[provider]);
-  setTitle(tag, provider === 'cursor' ? tr('Agente do Cursor') : tr('Agente do Codex (OpenAI)'));
+  setTitle(
+    tag,
+    provider === 'cursor' ? tr('Agente do Cursor') : provider === 'gemini' ? tr('Agente do Gemini CLI') : tr('Agente do Codex (OpenAI)'),
+  );
 }
 
 /** Quadradinho de status (pixel), com pulso quando precisa de você. */

@@ -1705,6 +1705,22 @@ export const FR: Readonly<Record<string, string>> = {
   "Código de saída {0}": "Code de sortie {0}",
 
   // server/sources/codex/source.ts
+  "Agente principal (Gemini)": "Agent principal (Gemini)",
+  "Gemini: {0}": "Gemini : {0}",
+  "Gemini: sessão {0} ilegível ({1}).": "Gemini : session {0} illisible ({1}).",
+  "   Gemini: {0} conta(s), {1} sessão(ões) aberta(s).": "   Gemini : {0} compte(s), {1} session(s) ouverte(s).",
+  "   Gemini: {0}.": "   Gemini : {0}.",
+  "desligado (HABBLAUD_GEMINI=0)": "désactivé (HABBLAUD_GEMINI=0)",
+  "nenhuma pasta GEMINI_HOME encontrada (instale o Gemini CLI ou defina HABBLAUD_GEMINI_DIRS)":
+    "aucun dossier GEMINI_HOME (installez Gemini CLI ou définissez HABBLAUD_GEMINI_DIRS)",
+  "Agente do Gemini CLI": "Agent Gemini CLI",
+  "{0} sessão(ões) Gemini no escritório": "{0} session(s) Gemini au bureau",
+  "Gemini CLI · nenhuma sessão aberta": "Gemini CLI · aucune session ouverte",
+  "Abra o Claude Code{0}, o Codex ou o Gemini CLI em qualquer projeto e veja seu agente chegar.":
+    "Ouvrez Claude Code{0}, Codex ou Gemini CLI dans un projet et voyez votre agent arriver.",
+  "Gemini: monta {0} em {1}/tmp, somente leitura.": "Gemini : monte {0} sur {1}/tmp, lecture seule.",
+  "Gemini: {0} não encontrado; instale o Gemini CLI ou defina GEMINI_HOME.":
+    "Gemini : {0} introuvable ; installez Gemini CLI ou définissez GEMINI_HOME.",
   "Agente principal (Codex)": "Agent principal (Codex)",
   "Subagente (Codex)": "Sous-agent (Codex)",
   "Codex: falha no ciclo de leitura: {0}": "Codex : échec du cycle de lecture : {0}",

@@ -10,7 +10,13 @@ do meio (0.**3**.0).
 
 ## [Não lançado]
 
+### Gemini CLI no escritório
+
+- **Gemini CLI:** o Habblaud observa sessões em `GEMINI_HOME/tmp/<projeto>/chats/session-*.jsonl` (padrão `~/.gemini`), mostra agente principal na sala do `directories[0]`, atividades, título, modelo, tokens parciais e terminal de leitura. Conta própria no topo (como Codex/Cursor). `HABBLAUD_GEMINI=0` desliga; `HABBLAUD_GEMINI_DIRS` ou `GEMINI_HOME` escolhem a pasta. Sem mensagens nem permissões pelo escritório (como Cursor hoje). No Docker, o `docker:up` monta `~/.gemini/tmp` em `/home/node/.gemini/tmp` (somente leitura).
+
 ### Cursor CLI no escritório e nomes da equipe
+
+- **Cursor IDE / `cursor-agent`:** sessão com `turn_ended` e transcript parado sai do escritório (a conta deixa de contar sessão aberta e o cartão de uso volta a mostrar Included/Auto); a leitura do jsonl processa todas as linhas novas (incluindo `turn_ended` na mesma rodada); título do chat no `store.db` deixa de virar nome do personagem — vale `cursorIdeDefault` / `cursorName` do `team.json` como antes.
 
 - **Permissões do Cursor pelo escritório:** `npm run cursor:hooks:install` acrescenta hooks em `~/.cursor/hooks.json`
   (`--auto-allow` ou `"autoAllow": true` em `~/.habblaud/cursor-hook.json` faz o hook sempre aprovar, sem esperar o escritório).

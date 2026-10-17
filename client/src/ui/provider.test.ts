@@ -66,8 +66,10 @@ describe('ferramenta (Claude Code ou Codex)', () => {
     const d = { short: 'D' };
     const x = { short: 'X', provider: 'codex' as const };
     expect(emptyOfficeHint([c, d])).toBe('Abra o Claude Code em qualquer projeto (atalhos c ou d) e veja seu agente chegar.');
-    expect(emptyOfficeHint([c, d, x])).toBe('Abra o Claude Code (atalhos c ou d) ou o Codex em qualquer projeto e veja seu agente chegar.');
-    expect(emptyOfficeHint([x])).toBe('Abra o Claude Code ou o Codex em qualquer projeto e veja seu agente chegar.');
+    expect(emptyOfficeHint([c, d, x])).toBe(
+      'Abra o Claude Code (atalhos c ou d), o Codex ou o Gemini CLI em qualquer projeto e veja seu agente chegar.',
+    );
+    expect(emptyOfficeHint([x])).toBe('Abra o Claude Code, o Codex ou o Gemini CLI em qualquer projeto e veja seu agente chegar.');
     expect(emptyOfficeHint([])).toBe('Abra o Claude Code em qualquer projeto e veja seu agente chegar.');
   });
 

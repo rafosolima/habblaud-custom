@@ -39,6 +39,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import type { AccountInfo, SourceInfo } from '../shared/types';
 import { codexDirsRefused, detectAccounts, discoverClaudeDirs, type DetectedAccount } from '../server/accounts/detect';
 import { detectCodexAccounts, discoverCodexDirs } from '../server/sources/codex/accounts';
+import { defaultGeminiHome } from '../server/sources/gemini/accounts';
 import { describeStateMigration, LEGACY_NAME, legacyEnvWarning, migrateLegacyStateDir } from '../server/legacy';
 import { makeClaudeRunner, MIN_CLAUDE_VERSION, readPackageVersion, updateInstalledMods, type ModUpdateResult } from './mod-install';
 import { tr } from '../shared/i18n';
@@ -65,6 +66,8 @@ export const CONTAINER_CURSOR_DIR = '/cursor';
 export const CONTAINER_CURSOR_IDE = '/home/node/.cursor';
 /** Equipe (team.json), somente leitura, quando existe no host. */
 export const CONTAINER_TEAM_FILE = '/team/team.json';
+/** Sessões do Gemini CLI no container (USER node): só tmp/ do host, somente leitura. */
+export const CONTAINER_GEMINI_HOME = '/home/node/.gemini';
 /** Onde o container lê o certificado do acesso remoto (server/http/remote.ts). */
 const CONTAINER_REMOTE_TLS_DIR = '/remote-tls';
 const SERVICE = 'habblaud';
@@ -324,7 +327,12 @@ export function renderOverride(
   codex: AccountMount[] = [],
   remoteTlsDir?: string,
   extraPorts: string[] = [],
-  extra: { cursorSessions?: string; cursorIde?: { chats: string; projects: string; cliConfig?: string }; teamFile?: string } = {},
+  extra: {
+    cursorSessions?: string;
+    cursorIde?: { chats: string; projects: string; cliConfig?: string };
+    teamFile?: string;
+    geminiTmp?: string;
+  } = {},
 ): string {
   const env: Array<[string, string]> = [
     ['HABBLAUD_CLAUDE_DIRS', mounts.map((m) => m.mountDir).join(',')],
@@ -361,6 +369,7 @@ export function renderOverride(
     }
   }
   if (extra.teamFile) binds.push({ source: extra.teamFile, target: CONTAINER_TEAM_FILE });
+  if (extra.geminiTmp) binds.push({ source: extra.geminiTmp, target: `${CONTAINER_GEMINI_HOME}/tmp` });
   if (binds.length) {
     lines.push('    volumes:');
     for (const b of binds) {
@@ -526,6 +535,17 @@ function migrateStateDir(): void {
 export function cursorDisabled(env: NodeJS.ProcessEnv): boolean {
   const v = env.HABBLAUD_CURSOR?.trim();
   return !!v && /^(0|false|off|no)$/i.test(v);
+}
+
+/** HABBLAUD_GEMINI desligado (0, false, off, no). */
+export function geminiDisabled(env: NodeJS.ProcessEnv): boolean {
+  const v = env.HABBLAUD_GEMINI?.trim();
+  return !!v && /^(0|false|off|no)$/i.test(v);
+}
+
+/** Sessões ao vivo do Gemini CLI (~/.gemini/tmp), somente leitura no container. */
+function ensureGeminiTmp(home: string): string | undefined {
+  return realDir(join(defaultGeminiHome(process.env, home), 'tmp'));
 }
 
 /** Cria (700) a pasta das execuções do Cursor no host, para a montagem não nascer do root. */
@@ -778,7 +798,12 @@ async function up(opts: Options, port: number): Promise<void> {
   }
   const teamFile = existsSync(TEAM_FILE) ? TEAM_FILE : undefined;
   if (teamFile) say(tr('Equipe: monta {0}, somente leitura.', [tildify(teamFile)]));
-  writeFileSync(tmp, renderOverride(mounts, new Date(), usageDir, hostTimeZone(), codexMounts, remoteTlsDir, remotePorts, { cursorSessions, cursorIde, teamFile }), { mode: 0o600 });
+  const geminiTmp = geminiDisabled(process.env) ? undefined : ensureGeminiTmp(HOME);
+  if (geminiTmp) say(tr('Gemini: monta {0} em {1}/tmp, somente leitura.', [tildify(geminiTmp), CONTAINER_GEMINI_HOME]));
+  else if (!geminiDisabled(process.env)) {
+    warn(tr('Gemini: {0} não encontrado; instale o Gemini CLI ou defina GEMINI_HOME.', [tildify(join(defaultGeminiHome(process.env, HOME), 'tmp'))]));
+  }
+  writeFileSync(tmp, renderOverride(mounts, new Date(), usageDir, hostTimeZone(), codexMounts, remoteTlsDir, remotePorts, { cursorSessions, cursorIde, teamFile, geminiTmp }), { mode: 0o600 });
   chmodSync(tmp, 0o600);
   renameSync(tmp, OVERRIDE_FILE);
   say(tr('docker-compose.override.yml gerado.'));

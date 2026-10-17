@@ -224,6 +224,10 @@ const ALIAS_TOOLS: Record<Provider, { invokes: RegExp; dir: RegExp }> = {
     invokes: /(?:^|[\s;&|(])(?:[\w.~/-]*\/)?(?:cursor-agent|agent)(?=$|[\s;&|)])/,
     dir: /\bHABBLAUD_CURSOR_CHATS_DIR=(?:"([^"]*)"|'([^']*)'|([^\s;&|]+))/,
   },
+  gemini: {
+    invokes: /(?:^|[\s;&|(])(?:[\w.~/-]*\/)?gemini(?=$|[\s;&|)])/,
+    dir: /\bGEMINI_HOME=(?:"([^"]*)"|'([^']*)'|([^\s;&|]+))/,
+  },
 };
 
 /**
